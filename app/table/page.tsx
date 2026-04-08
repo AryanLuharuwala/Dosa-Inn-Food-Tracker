@@ -10,7 +10,7 @@ import styles from './page.module.css';
 
 export default function TablePage() {
     const router = useRouter();
-    const { setTableNumber } = useCart();
+    const { setTableNumber, setOrderType } = useCart();
     const [table, setTable] = useState('');
     const [showLoader, setShowLoader] = useState(false);
     const [isAssigning, setIsAssigning] = useState(true);
@@ -49,6 +49,7 @@ export default function TablePage() {
         }
 
         setTableNumber(table);
+        setOrderType('dine-in');
         setShowLoader(true);
     };
 
