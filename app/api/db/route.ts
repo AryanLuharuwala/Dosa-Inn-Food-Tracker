@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-    getMenuItems, saveMenuItems,
+    getMenuItems, saveMenuItems, updateMenuItemFields, deleteMenuItemById,
     getCategories, saveCategories,
     getOrders, appendOrder, updateOrderStatus as dbUpdateOrderStatus,
     getSettings, saveSettings,
@@ -117,24 +117,21 @@ export async function POST(req: NextRequest) {
 
         case 'menu_update_item': {
             const { id, updates } = body as { id: string; updates: Partial<MenuItem> };
-            const items = await getMenuItems() as MenuItem[];
-            await saveMenuItems(items.map(i => i.id === id ? { ...i, ...updates } : i));
+            await updateMenuItemFields(id, updates as Record<string, unknown>);
             emit('menu', 'menu_items');
             return NextResponse.json({ ok: true });
         }
 
         case 'menu_add_item': {
             const { item } = body as { item: MenuItem };
-            const items = await getMenuItems() as MenuItem[];
-            await saveMenuItems([...items, item]);
+            await saveMenuItems([item]);
             emit('menu', 'menu_items');
             return NextResponse.json({ ok: true });
         }
 
         case 'menu_delete_item': {
             const { id } = body as { id: string };
-            const items = await getMenuItems() as MenuItem[];
-            await saveMenuItems(items.filter(i => i.id !== id));
+            await deleteMenuItemById(id);
             emit('menu', 'menu_items');
             return NextResponse.json({ ok: true });
         }

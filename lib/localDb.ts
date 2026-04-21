@@ -68,6 +68,19 @@ export async function saveMenuItems(items: unknown[]) {
     }
 }
 
+export async function updateMenuItemFields(id: string, updates: Record<string, unknown>) {
+    const db = await getDb();
+    await db.collection('menu_items').updateOne(
+        { id },
+        { $set: { ...updates, updatedAt: new Date() } }
+    );
+}
+
+export async function deleteMenuItemById(id: string) {
+    const db = await getDb();
+    await db.collection('menu_items').deleteOne({ id });
+}
+
 // ── Categories ─────────────────────────────────────────────────────────────────
 
 export async function getCategories() {
