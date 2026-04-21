@@ -61,29 +61,28 @@ A mobile-first restaurant ordering system for campus dining. QR-based table orde
 | Azure service | Purpose |
 |---|---|
 | Azure Web App (Node 20) | Hosts the Next.js app |
-| Azure Database for PostgreSQL Flexible Server | Persistent data store |
-| Azure Cache for Redis | Rate limiting + SSE Pub/Sub across instances |
+| Azure Cosmos DB for MongoDB | Persistent data store |
 | Azure Blob Storage | Menu image uploads |
 
 ### 1. Provision Azure resources
 
-```bash
-# PostgreSQL — note connection string for DATABASE_URL
-# Redis — note connection string for REDIS_URL
-# Storage account — note connection string for AZURE_STORAGE_CONNECTION_STRING
-```
+You need a **Cosmos DB for MongoDB** account and a **Storage Account**. Create the Storage Account via Cloud Shell:
 
-Create the database schema once:
 ```bash
-DATABASE_URL="postgresql://user:pass@host/db?sslmode=require" \
-  psql -f db/schema.sql
+RG="your-resource-group"
+az storage account create --resource-group $RG --name pollysstorage \
+  --location eastus --sku Standard_LRS --kind StorageV2
+
+# Get connection string
+az storage account show-connection-string --resource-group $RG \
+  --name pollysstorage --query connectionString -o tsv
 ```
 
 ### 2. Migrate existing data (if any)
 
 If you have local JSON files in `/data/`:
 ```bash
-DATABASE_URL="postgresql://..." npx tsx scripts/migrate-to-azure.ts
+MONGO_URL="mongodb://..." npx tsx scripts/migrate-to-azure.ts
 ```
 
 ### 3. Set App Settings on Azure Web App
@@ -91,8 +90,8 @@ DATABASE_URL="postgresql://..." npx tsx scripts/migrate-to-azure.ts
 In **Azure Portal → Your Web App → Configuration → Application settings**, add:
 
 ```
-DATABASE_URL                       postgresql://user:pass@host/db?sslmode=require
-REDIS_URL                          rediss://user:pass@host:6380
+MONGO_URL                          mongodb://pollys-server:key@pollys-server.mongo.cosmos.azure.com:10255/pollys-database?ssl=true&replicaSet=globaldb&retrywrites=false&maxIdleTimeMS=120000&appName=@pollys-server@
+MONGO_DB_NAME                      pollys-database
 AZURE_STORAGE_CONNECTION_STRING    DefaultEndpointsProtocol=https;AccountName=...
 AZURE_STORAGE_CONTAINER_NAME       uploads
 ADMIN_PASSWORD                     your-admin-password
@@ -125,8 +124,7 @@ node /home/site/wwwroot/server.js
 ### Prerequisites
 
 - Node.js 20+
-- PostgreSQL (local or Docker)
-- Redis (local or Docker, optional — falls back to in-process if unavailable)
+- A MongoDB-compatible database (local MongoDB, or point at Cosmos DB directly)
 
 ### 1. Clone & install
 
@@ -146,11 +144,8 @@ cp .env.example .env.local
 Edit `.env.local`:
 
 ```env
-DATABASE_URL=postgresql://postgres:password@localhost:5432/rocky
-
-# Redis optional locally — rate limiting and SSE fallback to in-memory if absent
-REDIS_URL=redis://localhost:6379
-REDIS_TLS=false
+MONGO_URL=mongodb://localhost:27017
+MONGO_DB_NAME=rocky
 
 # Azure Blob Storage (optional locally — skip if you don't need image upload)
 AZURE_STORAGE_CONNECTION_STRING=
@@ -172,13 +167,7 @@ LIVEKIT_API_SECRET=
 NEXT_PUBLIC_LIVEKIT_URL=
 ```
 
-### 3. Create the schema
-
-```bash
-psql -U postgres -d rocky -f db/schema.sql
-```
-
-### 4. Build & run
+### 3. Build & run
 
 **Development:**
 ```bash

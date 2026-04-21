@@ -1,67 +1,29 @@
-import { Pool } from 'pg';
-import { createClient } from 'redis';
-
-// ── PostgreSQL ────────────────────────────────────────────────────────────────
+import { MongoClient, Db } from 'mongodb';
 
 declare global {
-    // Hot-reload safe: reuse pool across Next.js module re-evaluations
-    var __pgPool: Pool | undefined;
+    var __mongoClient: MongoClient | undefined;
+    var __mongoDb: Db | undefined;
 }
 
-function createPool() {
-    return new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
-        max: parseInt(process.env.DATABASE_POOL_SIZE ?? '10'),
-        idleTimeoutMillis: 30_000,
-        connectionTimeoutMillis: 5_000,
+const uri = process.env.MONGO_URL!;
+const dbName = process.env.MONGO_DB_NAME ?? 'pollys-database';
+
+function createClient() {
+    return new MongoClient(uri, {
+        tls: true,
+        tlsAllowInvalidCertificates: false,
+        retryWrites: false,           // Cosmos DB requirement
+        maxPoolSize: 10,
     });
 }
 
-export const pool: Pool = globalThis.__pgPool ?? (globalThis.__pgPool = createPool());
+export async function getDb(): Promise<Db> {
+    if (globalThis.__mongoDb) return globalThis.__mongoDb;
 
-export async function query<T = Record<string, unknown>>(
-    sql: string,
-    params?: unknown[]
-): Promise<T[]> {
-    const { rows } = await pool.query(sql, params);
-    return rows as T[];
-}
+    const client = globalThis.__mongoClient ?? (globalThis.__mongoClient = createClient());
+    if (!client.connect) throw new Error('MongoClient not initialized');
 
-export async function queryOne<T = Record<string, unknown>>(
-    sql: string,
-    params?: unknown[]
-): Promise<T | null> {
-    const rows = await query<T>(sql, params);
-    return rows[0] ?? null;
-}
-
-// ── Redis ─────────────────────────────────────────────────────────────────────
-
-declare global {
-    var __redisClient: ReturnType<typeof createClient> | undefined;
-    var __redisConnecting: boolean | undefined;
-}
-
-export function getRedis() {
-    if (globalThis.__redisClient) return globalThis.__redisClient;
-
-    const useTls = process.env.REDIS_TLS !== 'false';
-    const client = createClient({
-        url: process.env.REDIS_URL,
-        socket: {
-            ...(useTls ? { tls: true as const } : {}),
-            reconnectStrategy: (retries: number) => Math.min(retries * 100, 3000),
-        },
-    });
-
-    client.on('error', (err) => console.error('[Redis] error:', err.message));
-
-    if (!globalThis.__redisConnecting) {
-        globalThis.__redisConnecting = true;
-        client.connect().catch((e) => console.error('[Redis] connect failed:', e.message));
-    }
-
-    globalThis.__redisClient = client;
-    return client;
+    await client.connect();
+    globalThis.__mongoDb = client.db(dbName);
+    return globalThis.__mongoDb;
 }
