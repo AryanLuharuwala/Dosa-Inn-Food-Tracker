@@ -93,8 +93,26 @@ export function MenuProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         loadAll();
-        const interval = setInterval(loadAll, 3000);
-        return () => clearInterval(interval);
+
+        // SSE-driven refresh — no polling overhead
+        let es: EventSource;
+        let retryTimeout: ReturnType<typeof setTimeout>;
+
+        const connect = () => {
+            es = new EventSource('/api/events?channel=menu');
+            es.addEventListener('change', () => loadAll());
+            es.addEventListener('error', () => {
+                es.close();
+                // Reconnect after 3s if SSE drops
+                retryTimeout = setTimeout(connect, 3000);
+            });
+        };
+        connect();
+
+        return () => {
+            es?.close();
+            clearTimeout(retryTimeout);
+        };
     }, [loadAll]);
 
     // ── Menu item operations ───────────────────────────────────────────────

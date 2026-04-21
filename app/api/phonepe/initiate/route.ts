@@ -10,7 +10,12 @@ const PAY_URL = IS_SANDBOX
     ? 'https://api-preprod.phonepe.com/apis/pg-sandbox/checkout/v2/pay'
     : 'https://api.phonepe.com/apis/pg/checkout/v2/pay';
 
+// Module-level token cache — survives across requests in the same worker process
+let tokenCache: { token: string; expiresAt: number } | null = null;
+
 async function getAccessToken(): Promise<string> {
+    if (tokenCache && Date.now() < tokenCache.expiresAt) return tokenCache.token;
+
     const params = new URLSearchParams({
         client_id: process.env.PHONEPE_CLIENT_ID!,
         client_version: process.env.PHONEPE_CLIENT_VERSION || '1',
@@ -30,7 +35,10 @@ async function getAccessToken(): Promise<string> {
     }
 
     const data = await res.json();
-    return data.access_token as string;
+    // PhonePe tokens typically expire in 3600s; cache with a 60s safety margin
+    const ttl = ((data.expires_in as number) || 3600) - 60;
+    tokenCache = { token: data.access_token as string, expiresAt: Date.now() + ttl * 1000 };
+    return tokenCache.token;
 }
 
 export async function POST(req: NextRequest) {
@@ -41,7 +49,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'merchantOrderId and amount are required' }, { status: 400 });
         }
 
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+        // Always derive from the incoming request so it works on any device/IP
+        const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
         const accessToken = await getAccessToken();
 
         const payload = {

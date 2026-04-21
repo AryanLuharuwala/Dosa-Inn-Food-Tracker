@@ -133,6 +133,128 @@ export function saveChefCategories(cc: ChefCategory[]) {
     write('chef_categories', cc);
 }
 
+// ── Shared carts ──────────────────────────────────────────────────────────
+
+export interface SharedCartItem {
+    id: string;
+    menuItem: { id: string; name: string; price: number; image?: string };
+    quantity: number;
+    selectedAddOns: Array<{ id: string; name: string; price: number }>;
+    totalPrice: number;
+}
+
+export interface SharedCartExtra {
+    id: string;
+    extra: { id: string; name: string; price: number };
+    quantity: number;
+}
+
+export interface SharedCartParticipant {
+    visitorId: string;
+    joinedAt: string;
+    items: SharedCartItem[];
+    extras: SharedCartExtra[];
+}
+
+export interface SharedCart {
+    code: string;
+    tableNumber: string;
+    tokenNumber: number;
+    createdAt: string;
+    expiresAt: string; // ISO — expire after 2h
+    participants: SharedCartParticipant[];
+}
+
+function getSharedCarts(): Record<string, SharedCart> {
+    return read<Record<string, SharedCart>>('shared_carts', {});
+}
+
+function saveSharedCarts(carts: Record<string, SharedCart>) {
+    write('shared_carts', carts);
+}
+
+function pruneExpired(carts: Record<string, SharedCart>): Record<string, SharedCart> {
+    const now = Date.now();
+    return Object.fromEntries(
+        Object.entries(carts).filter(([, c]) => new Date(c.expiresAt).getTime() > now)
+    );
+}
+
+export function createSharedCart(tableNumber: string, tokenNumber: number, visitorId: string): SharedCart {
+    const carts = pruneExpired(getSharedCarts());
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const now = new Date();
+    const cart: SharedCart = {
+        code,
+        tableNumber,
+        tokenNumber,
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+        participants: [{ visitorId, joinedAt: now.toISOString(), items: [], extras: [] }],
+    };
+    carts[code] = cart;
+    saveSharedCarts(carts);
+    return cart;
+}
+
+export function getSharedCart(code: string): SharedCart | null {
+    const carts = pruneExpired(getSharedCarts());
+    return carts[code] ?? null;
+}
+
+export function joinSharedCart(
+    code: string,
+    visitorId: string,
+    // Optional: bring participants from the joiner's existing cart
+    mergeParticipants?: SharedCartParticipant[]
+): SharedCart | null {
+    const carts = pruneExpired(getSharedCarts());
+    const cart = carts[code];
+    if (!cart) return null;
+
+    if (!cart.participants.find(p => p.visitorId === visitorId)) {
+        // If the joiner had their own shared cart, merge all its participants in
+        if (mergeParticipants && mergeParticipants.length > 0) {
+            for (const mp of mergeParticipants) {
+                if (!cart.participants.find(p => p.visitorId === mp.visitorId)) {
+                    cart.participants.push(mp);
+                }
+            }
+        } else {
+            cart.participants.push({ visitorId, joinedAt: new Date().toISOString(), items: [], extras: [] });
+        }
+    } else if (mergeParticipants && mergeParticipants.length > 0) {
+        // Already in cart but merging others
+        for (const mp of mergeParticipants) {
+            if (!cart.participants.find(p => p.visitorId === mp.visitorId)) {
+                cart.participants.push(mp);
+            }
+        }
+    }
+
+    carts[code] = cart;
+    saveSharedCarts(carts);
+    return cart;
+}
+
+export function updateSharedCartParticipant(
+    code: string,
+    visitorId: string,
+    items: SharedCartItem[],
+    extras: SharedCartExtra[]
+): SharedCart | null {
+    const carts = pruneExpired(getSharedCarts());
+    const cart = carts[code];
+    if (!cart) return null;
+    const idx = cart.participants.findIndex(p => p.visitorId === visitorId);
+    if (idx === -1) return null;
+    cart.participants[idx].items = items;
+    cart.participants[idx].extras = extras;
+    carts[code] = cart;
+    saveSharedCarts(carts);
+    return cart;
+}
+
 // ── Order type (shared) ───────────────────────────────────────────────────
 
 export interface Order {

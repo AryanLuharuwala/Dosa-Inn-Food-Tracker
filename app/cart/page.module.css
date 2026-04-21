@@ -258,3 +258,24 @@
 .checkoutAmount {
     font-weight: 700;
 }
+
+.checkoutBtnSecondary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 16px 20px;
+    background: transparent;
+    border: 2px solid var(--color-primary);
+    color: var(--color-primary);
+    border-radius: var(--radius-lg);
+    font-size: var(--font-size-base);
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: all var(--transition-fast);
+}
+
+.checkoutBtnSecondary:hover {
+    background: rgba(26, 77, 46, 0.06);
+}

@@ -1,0 +1,442 @@
+{
+  "EOHF5W": {
+    "code": "EOHF5W",
+    "tableNumber": "101",
+    "tokenNumber": 101,
+    "createdAt": "2026-04-21T03:19:04.801Z",
+    "expiresAt": "2026-04-21T05:19:04.801Z",
+    "participants": [
+      {
+        "visitorId": "57a202cf-ff5b-4a79-b1ff-87217511d154",
+        "joinedAt": "2026-04-21T03:19:04.801Z",
+        "items": [
+          {
+            "id": "aloo-paratha-1776741534876",
+            "menuItem": {
+              "id": "aloo-paratha",
+              "name": "Classic Aloo Paratha",
+              "description": "A soft wheat paratha generously stuffed with spiced mashed potatoes, pan-roasted till crisp outside and fluffy inside. Old reliable. Like that one friend who always shows up.",
+              "price": 1,
+              "categoryId": "parathas",
+              "tags": [
+                "bestSeller"
+              ],
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/aloo-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [],
+            "totalPrice": 1
+          },
+          {
+            "id": "methi-paratha-1776742722705",
+            "menuItem": {
+              "id": "methi-paratha",
+              "name": "Methi Paratha",
+              "description": "Fresh methi leaves in soft paratha dough. Low-key healthy, high-key tasty. Kem chho? Your taste buds will be majama.",
+              "price": 70,
+              "categoryId": "parathas",
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/methi-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [],
+            "totalPrice": 70
+          }
+        ],
+        "extras": []
+      },
+      {
+        "visitorId": "1a29d93e-8a3a-4787-b178-6c329c4aa81e",
+        "joinedAt": "2026-04-21T03:19:33.106Z",
+        "items": [
+          {
+            "id": "ratlami-sev-paratha-1776699446177",
+            "menuItem": {
+              "id": "ratlami-sev-paratha",
+              "name": "Ratlami Sev Paratha",
+              "description": "Crunchy ratlami sev layered inside a hot paratha, adding texture and a bold Indori kick.",
+              "price": 70,
+              "categoryId": "parathas",
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/ratlami-sev-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [],
+            "totalPrice": 70
+          },
+          {
+            "id": "onion-paratha-1776699460249",
+            "menuItem": {
+              "id": "onion-paratha",
+              "name": "Onion Paratha",
+              "description": "Finely chopped onions mixed with mild spices, folded into a paratha that's lightly crisp and naturally sweet. Your only pyaas ka punchnama….",
+              "price": 60,
+              "categoryId": "parathas",
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/onion-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [],
+            "totalPrice": 60
+          },
+          {
+            "id": "paneer-paratha-1776699466875",
+            "menuItem": {
+              "id": "paneer-paratha",
+              "name": "Paneer Paratha",
+              "description": "Fresh paneer crumbled with spices and herbs, stuffed into a thick paratha and cooked slow for a rich bite. For when your hunger can't dance but your appetite sala... definitely can.",
+              "price": 80,
+              "categoryId": "parathas",
+              "tags": [
+                "bestSeller"
+              ],
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/paneer-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [],
+            "totalPrice": 80
+          },
+          {
+            "id": "onion-paratha-1776742704978",
+            "menuItem": {
+              "id": "onion-paratha",
+              "name": "Onion Paratha",
+              "description": "Finely chopped onions mixed with mild spices, folded into a paratha that's lightly crisp and naturally sweet. Your only pyaas ka punchnama….",
+              "price": 60,
+              "categoryId": "parathas",
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/onion-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [],
+            "totalPrice": 60
+          },
+          {
+            "id": "aloo-paratha-1776743759486",
+            "menuItem": {
+              "id": "aloo-paratha",
+              "name": "Classic Aloo Paratha",
+              "description": "A soft wheat paratha generously stuffed with spiced mashed potatoes, pan-roasted till crisp outside and fluffy inside. Old reliable. Like that one friend who always shows up.",
+              "price": 1,
+              "categoryId": "parathas",
+              "tags": [
+                "bestSeller"
+              ],
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/aloo-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [],
+            "totalPrice": 1
+          }
+        ],
+        "extras": []
+      },
+      {
+        "visitorId": "0a14861d-e260-4a23-aea9-69e361efa495",
+        "joinedAt": "2026-04-21T03:48:45.892Z",
+        "items": [
+          {
+            "id": "paneer-paratha-1776743370115",
+            "menuItem": {
+              "id": "paneer-paratha",
+              "name": "Paneer Paratha",
+              "description": "Fresh paneer crumbled with spices and herbs, stuffed into a thick paratha and cooked slow for a rich bite. For when your hunger can't dance but your appetite sala... definitely can.",
+              "price": 80,
+              "categoryId": "parathas",
+              "tags": [
+                "bestSeller"
+              ],
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/paneer-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [
+              {
+                "id": "butter",
+                "name": "Butter",
+                "price": 10
+              }
+            ],
+            "totalPrice": 90
+          }
+        ],
+        "extras": []
+      }
+    ]
+  }
+}

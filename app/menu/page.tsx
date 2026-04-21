@@ -17,6 +17,8 @@ export default function MenuPage() {
     const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => { setMounted(true); }, []);
 
     // Redirect if no table number (only for dine-in and if NOT a preorder)
     useEffect(() => {
@@ -172,7 +174,7 @@ export default function MenuPage() {
             </div>
 
             {/* Floating Cart Button */}
-            {totalItems > 0 && (
+            {mounted && totalItems > 0 && (
                 <div className={styles.floatingCart} onClick={() => router.push('/cart')}>
                     <div className={styles.cartInfo}>
                         <span className={styles.cartItems}>{totalItems} item{totalItems !== 1 ? 's' : ''}</span>

@@ -1,19 +1,32 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import LeafLoader from '@/components/LeafLoader';
 import { useCart } from '@/lib/cartContext';
 import { ensureSession } from '@/lib/auth';
+import { fetchSharedCart } from '@/lib/useSharedCart';
+import type { SharedCart } from '@/lib/useSharedCart';
 import styles from './page.module.css';
 
 export default function CheckoutPage() {
     const router = useRouter();
-    const { items, extras, tableNumber, orderType, preorderDetails, totalAmount } = useCart();
+    const searchParams = useSearchParams();
+    const payMode = searchParams.get('pay'); // 'share' | 'full' | null
+    const sharedCode = searchParams.get('code');
+    const { items, extras, tableNumber, orderType, preorderDetails, totalAmount, sharedCartCode } = useCart();
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState('');
+    const [fullBillCart, setFullBillCart] = useState<SharedCart | null>(null);
     const orderCompleted = useRef(false);
+
+    // Load full shared cart when paying full bill
+    useEffect(() => {
+        if (payMode === 'full' && (sharedCode || sharedCartCode)) {
+            fetchSharedCart((sharedCode || sharedCartCode)!).then(setFullBillCart);
+        }
+    }, [payMode, sharedCode, sharedCartCode]);
 
     useEffect(() => {
         if (orderCompleted.current) return;
@@ -21,6 +34,20 @@ export default function CheckoutPage() {
             router.push('/menu');
         }
     }, [items, extras, router]);
+
+    // For full bill: aggregate all participants' items
+    const billItems = payMode === 'full' && fullBillCart
+        ? fullBillCart.participants.flatMap(p => p.items)
+        : items;
+    const billExtras = payMode === 'full' && fullBillCart
+        ? fullBillCart.participants.flatMap(p => p.extras)
+        : extras;
+    const billAmount = payMode === 'full' && fullBillCart
+        ? fullBillCart.participants.reduce((sum, p) => {
+            return sum + p.items.reduce((s, i) => s + i.totalPrice, 0)
+                + p.extras.reduce((s, e) => s + e.extra.price * e.quantity, 0);
+        }, 0)
+        : totalAmount;
 
     const handlePhonePePayment = async () => {
         setError('');
@@ -37,7 +64,7 @@ export default function CheckoutPage() {
                 orderType,
                 tableNumber: orderType === 'dine-in' ? (tableNumber || '0') : null,
                 preorderDetails: orderType === 'preorder' ? preorderDetails : null,
-                items: items.map(item => ({
+                items: billItems.map(item => ({
                     menuItem: {
                         id: item.menuItem.id,
                         name: item.menuItem.name,
@@ -51,7 +78,7 @@ export default function CheckoutPage() {
                     })),
                     totalPrice: item.totalPrice,
                 })),
-                extras: extras.map(e => ({
+                extras: billExtras.map(e => ({
                     extra: {
                         id: e.extra.id,
                         name: e.extra.name,
@@ -59,7 +86,7 @@ export default function CheckoutPage() {
                     },
                     quantity: e.quantity,
                 })),
-                totalAmount,
+                totalAmount: billAmount,
                 timestamp: new Date().toISOString(),
                 tokenId: tokenId || '',
             };
@@ -68,7 +95,7 @@ export default function CheckoutPage() {
             const res = await fetch('/api/phonepe/initiate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ merchantOrderId: tempOrderId, amount: totalAmount }),
+                body: JSON.stringify({ merchantOrderId: tempOrderId, amount: billAmount }),
             });
 
             const data = await res.json();
@@ -92,8 +119,8 @@ export default function CheckoutPage() {
         }
     };
 
-    const totalItemsCount = items.reduce((sum, i) => sum + i.quantity, 0) +
-        extras.reduce((sum, e) => sum + e.quantity, 0);
+    const totalItemsCount = billItems.reduce((sum, i) => sum + i.quantity, 0) +
+        billExtras.reduce((sum, e) => sum + e.quantity, 0);
 
     return (
         <>
@@ -136,15 +163,20 @@ export default function CheckoutPage() {
                             </div>
                             <div className={styles.divider} />
 
+                            {payMode === 'full' && (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 700, marginBottom: 8 }}>
+                                    Full group bill
+                                </div>
+                            )}
                             <div className={styles.orderPreview}>
-                                {items.slice(0, 3).map((item, i) => (
+                                {billItems.slice(0, 3).map((item, i) => (
                                     <div key={i} className={styles.previewItem}>
                                         <span className={styles.previewQty}>{item.quantity}x</span>
                                         <span className={styles.previewName}>{item.menuItem.name}</span>
                                     </div>
                                 ))}
-                                {items.length > 3 && (
-                                    <span className={styles.moreItems}>+ {items.length - 3} more items</span>
+                                {billItems.length > 3 && (
+                                    <span className={styles.moreItems}>+ {billItems.length - 3} more items</span>
                                 )}
                             </div>
 
@@ -154,7 +186,7 @@ export default function CheckoutPage() {
                                     <span className={styles.itemsCount}>{totalItemsCount} items</span>
                                     <span className={styles.totalLabel}>Total Amount</span>
                                 </div>
-                                <span className={styles.totalAmount}>₹{totalAmount}</span>
+                                <span className={styles.totalAmount}>₹{billAmount}</span>
                             </div>
                         </div>
                     </div>
@@ -180,7 +212,7 @@ export default function CheckoutPage() {
                             disabled={isProcessing}
                         >
                             <span className={styles.phonePeLogo}>Pe</span>
-                            <span>Pay ₹{totalAmount} with PhonePe</span>
+                            <span>Pay ₹{billAmount} with PhonePe</span>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>

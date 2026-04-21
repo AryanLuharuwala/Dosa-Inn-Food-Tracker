@@ -16,6 +16,8 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { MenuItem, AddOn, Extra } from './menuData';
+import { getStoredSharedCode, setStoredSharedCode, useSharedCartSync, SharedCart } from './useSharedCart';
+import { ensureSession } from './auth';
 
 export type OrderType = 'dine-in' | 'preorder';
 
@@ -57,11 +59,28 @@ interface CartContextType {
     clearCart: () => void;
     totalItems: number;
     totalAmount: number;
+    // Shared cart
+    sharedCartCode: string | null;
+    sharedCart: SharedCart | null;
+    visitorId: string | null;
+    startSharedCart: () => Promise<void>;
+    joinSharedCart: (code: string) => Promise<boolean>;
+    leaveSharedCart: () => void;
+    updateParticipantItem: (participantVisitorId: string, cartItemId: string, newQuantity: number) => Promise<void>;
+    removeParticipantItem: (participantVisitorId: string, cartItemId: string) => Promise<void>;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
+    const [visitorId, setVisitorId] = useState<string | null>(null);
+    const [sharedCartCode, setSharedCartCode] = useState<string | null>(() => getStoredSharedCode());
+    const [sharedCart, setSharedCart] = useState<SharedCart | null>(null);
+
+    React.useEffect(() => {
+        ensureSession().then(id => setVisitorId(id));
+    }, []);
+
     // Initialize state from localStorage if available
     const [items, setItems] = useState<CartItem[]>(() => {
         if (typeof window === 'undefined') return [];
@@ -178,6 +197,90 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // Preserve orderType and preorderDetails so the user stays in their flow
     }, []);
 
+    // ── Shared cart ──────────────────────────────────────────────────────────
+
+    const handleRemoteUpdate = useCallback((cart: SharedCart) => {
+        setSharedCart(cart);
+        // If someone else joined and we don't have tableNumber yet, adopt theirs
+        if (cart.tableNumber) {
+            setTableNumber(cart.tableNumber);
+        }
+    }, [setTableNumber]);
+
+    useSharedCartSync(sharedCartCode, visitorId, items, extras, handleRemoteUpdate);
+
+    const startSharedCart = useCallback(async () => {
+        if (!tableNumber || !visitorId) return;
+        const tokenNum = parseInt(tableNumber) || 0;
+        const res = await fetch('/api/shared-cart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'create', visitorId, tableNumber, tokenNumber: tokenNum }),
+        });
+        if (res.ok) {
+            const cart: SharedCart = await res.json();
+            setSharedCartCode(cart.code);
+            setStoredSharedCode(cart.code);
+            setSharedCart(cart);
+        }
+    }, [tableNumber, visitorId]);
+
+    const joinSharedCart = useCallback(async (code: string): Promise<boolean> => {
+        if (!visitorId) return false;
+        // Pass current shared cart participants so they get merged into the target cart
+        const mergeParticipants = sharedCart?.participants ?? [];
+        const res = await fetch('/api/shared-cart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'join', visitorId, code, mergeParticipants }),
+        });
+        if (!res.ok) return false;
+        const cart: SharedCart = await res.json();
+        // Discard old shared cart code and adopt the new one
+        setSharedCartCode(cart.code);
+        setStoredSharedCode(cart.code);
+        setSharedCart(cart);
+        setTableNumber(cart.tableNumber);
+        setOrderType('dine-in');
+        return true;
+    }, [visitorId, sharedCart, setTableNumber, setOrderType]);
+
+    const leaveSharedCart = useCallback(() => {
+        setSharedCartCode(null);
+        setStoredSharedCode(null);
+        setSharedCart(null);
+    }, []);
+
+    const updateParticipantItem = useCallback(async (participantVisitorId: string, cartItemId: string, newQuantity: number) => {
+        if (!sharedCartCode || !sharedCart) return;
+        const participant = sharedCart.participants.find(p => p.visitorId === participantVisitorId);
+        if (!participant) return;
+        const updatedItems = participant.items.map(i =>
+            i.id === cartItemId
+                ? { ...i, quantity: newQuantity, totalPrice: (i.menuItem.price + i.selectedAddOns.reduce((s, a) => s + a.price, 0)) * newQuantity }
+                : i
+        ).filter(i => i.quantity > 0);
+        const res = await fetch('/api/shared-cart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'update', visitorId: participantVisitorId, code: sharedCartCode, items: updatedItems, extras: participant.extras }),
+        });
+        if (res.ok) setSharedCart(await res.json());
+    }, [sharedCartCode, sharedCart]);
+
+    const removeParticipantItem = useCallback(async (participantVisitorId: string, cartItemId: string) => {
+        if (!sharedCartCode || !sharedCart) return;
+        const participant = sharedCart.participants.find(p => p.visitorId === participantVisitorId);
+        if (!participant) return;
+        const updatedItems = participant.items.filter(i => i.id !== cartItemId);
+        const res = await fetch('/api/shared-cart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'update', visitorId: participantVisitorId, code: sharedCartCode, items: updatedItems, extras: participant.extras }),
+        });
+        if (res.ok) setSharedCart(await res.json());
+    }, [sharedCartCode, sharedCart]);
+
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0) +
         extras.reduce((sum, e) => sum + e.quantity, 0);
 
@@ -203,6 +306,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
             clearCart,
             totalItems,
             totalAmount,
+            sharedCartCode,
+            sharedCart,
+            visitorId,
+            startSharedCart,
+            joinSharedCart,
+            leaveSharedCart,
+            updateParticipantItem,
+            removeParticipantItem,
         }}>
             {children}
         </CartContext.Provider>

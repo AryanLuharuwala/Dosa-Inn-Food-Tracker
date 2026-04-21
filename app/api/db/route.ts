@@ -11,6 +11,7 @@ import {
 import type { Order, Chef, ChefCategory } from '@/lib/localDb';
 import { menuItems as seedMenuItems } from '@/lib/menuData';
 import type { MenuItem } from '@/lib/menuData';
+import { emit } from '@/lib/serverEvents';
 
 // GET /api/db?resource=menu_items|categories|orders|settings|chefs|chef_categories
 export async function GET(req: NextRequest) {
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest) {
             const items = getMenuItems() as MenuItem[];
             const next = items.map(i => i.id === id ? { ...i, ...updates } : i);
             saveMenuItems(next);
+            emit('menu');
             return NextResponse.json({ ok: true });
         }
 
@@ -83,6 +85,7 @@ export async function POST(req: NextRequest) {
             const { item } = body as { item: MenuItem };
             const items = getMenuItems() as MenuItem[];
             saveMenuItems([...items, item]);
+            emit('menu');
             return NextResponse.json({ ok: true });
         }
 
@@ -90,6 +93,7 @@ export async function POST(req: NextRequest) {
             const { id } = body as { id: string };
             const items = getMenuItems() as MenuItem[];
             saveMenuItems(items.filter(i => i.id !== id));
+            emit('menu');
             return NextResponse.json({ ok: true });
         }
 
@@ -98,6 +102,8 @@ export async function POST(req: NextRequest) {
         case 'order_add': {
             const { order } = body as { order: Order };
             appendOrder(order);
+            emit('orders');
+            emit('menu'); // kitchen polling orders via menu channel
             return NextResponse.json({ ok: true });
         }
 
@@ -108,6 +114,8 @@ export async function POST(req: NextRequest) {
                 items?: Order['items'];
             };
             dbUpdateOrderStatus(orderId, status, items);
+            emit('orders');
+            emit('menu');
             return NextResponse.json({ ok: true });
         }
 
@@ -116,6 +124,7 @@ export async function POST(req: NextRequest) {
         case 'settings_save': {
             const { settings } = body;
             saveSettings(settings);
+            emit('menu');
             return NextResponse.json({ ok: true });
         }
 
@@ -128,6 +137,7 @@ export async function POST(req: NextRequest) {
             if (idx >= 0) chefs[idx] = chef;
             else chefs.push(chef);
             saveChefs(chefs);
+            emit('kitchen');
             return NextResponse.json({ ok: true });
         }
 
@@ -137,18 +147,19 @@ export async function POST(req: NextRequest) {
             saveChefs(chefs);
             const cc = getChefCategories().filter(c => c.chef_id !== id);
             saveChefCategories(cc);
+            emit('kitchen');
             return NextResponse.json({ ok: true });
         }
 
         case 'chef_categories_set': {
             const { chef_id, category_ids } = body as { chef_id: string; category_ids: string[] };
-            // Remove old mappings for this chef AND for these categories from other chefs
             let cc = getChefCategories().filter(c =>
                 c.chef_id !== chef_id && !category_ids.includes(c.category_id)
             );
             const newRows: ChefCategory[] = category_ids.map(cid => ({ chef_id, category_id: cid }));
             cc = [...cc, ...newRows];
             saveChefCategories(cc);
+            emit('kitchen');
             return NextResponse.json({ ok: true });
         }
 

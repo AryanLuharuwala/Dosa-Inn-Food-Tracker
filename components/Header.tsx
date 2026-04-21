@@ -18,6 +18,11 @@ export default function Header({ showCart = true, showBack = false, onBack, titl
     const router = useRouter();
     const { totalItems, tableNumber, orderType } = useCart();
     const [activeTrackingLabel, setActiveTrackingLabel] = useState<string | null>(null);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     useEffect(() => {
         // Check for active order in session
@@ -78,7 +83,7 @@ export default function Header({ showCart = true, showBack = false, onBack, titl
                 </Link>
 
                 {/* Active Tracking Display */}
-                {activeTrackingLabel && (
+                {mounted && activeTrackingLabel && (
                     <Link href="/track-order" className={styles.tableTag} style={{ background: '#ffeb3b', color: '#000', textDecoration: 'none' }} title="Track Active Order">
                         <span style={{ fontWeight: 'bold' }}>
                             {activeTrackingLabel}
@@ -87,7 +92,7 @@ export default function Header({ showCart = true, showBack = false, onBack, titl
                 )}
 
                 {/* Current Cart Table Number */}
-                {tableNumber && orderType !== 'preorder' && (
+                {mounted && tableNumber && orderType !== 'preorder' && (
                     <div className={styles.tableTag}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <rect x="3" y="11" width="18" height="10" rx="2" />
@@ -105,7 +110,7 @@ export default function Header({ showCart = true, showBack = false, onBack, titl
                             <circle cx="18" cy="20" r="1" />
                             <path d="M6 6L5 3H2" />
                         </svg>
-                        {totalItems > 0 && (
+                        {mounted && totalItems > 0 && (
                             <span className={styles.cartBadge}>{totalItems}</span>
                         )}
                     </Link>
