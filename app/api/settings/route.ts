@@ -5,7 +5,7 @@ import path from 'path';
 
 const ENV_FILE = path.join(process.cwd(), '.env.local');
 
-const EDITABLE_KEYS = new Set([
+const EDITABLE_KEYS = [
     'ADMIN_PASSWORD',
     'PHONEPE_CLIENT_ID',
     'PHONEPE_CLIENT_SECRET',
@@ -13,9 +13,11 @@ const EDITABLE_KEYS = new Set([
     'PHONEPE_ENV',
     'PHONEPE_MERCHANT_ID',
     'NEXT_PUBLIC_BASE_URL',
-]);
+] as const;
 
-function readEnv(): Record<string, string> {
+const SENSITIVE_KEYS = new Set(['ADMIN_PASSWORD', 'PHONEPE_CLIENT_SECRET']);
+
+function readEnvFile(): Record<string, string> {
     try {
         return fs.readFileSync(ENV_FILE, 'utf8')
             .split('\n')
@@ -30,21 +32,31 @@ function readEnv(): Record<string, string> {
     } catch { return {}; }
 }
 
-function writeEnv(env: Record<string, string>) {
-    const lines = Object.entries(env).map(([k, v]) => `${k}=${v}`);
-    fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n', 'utf8');
+function writeEnvFile(env: Record<string, string>) {
+    try {
+        const lines = Object.entries(env).map(([k, v]) => `${k}=${v}`);
+        fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n', 'utf8');
+    } catch {
+        // On Azure Web App the working directory is read-only — silently skip.
+        // Settings are applied via Azure App Configuration, not .env.local.
+    }
 }
 
-// GET — return editable keys (mask secrets)
+function mask(key: string, val: string): string {
+    if (SENSITIVE_KEYS.has(key) && val.length > 4) {
+        return '•'.repeat(val.length - 4) + val.slice(-4);
+    }
+    return val;
+}
+
+// GET — return current values from process.env (works on both local and Azure)
 export async function GET(req: NextRequest) {
     if (!isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const env = readEnv();
+
     const result: Record<string, string> = {};
     for (const key of EDITABLE_KEYS) {
-        const val = env[key] ?? '';
-        // Mask sensitive values — show only last 4 chars
-        const isSensitive = key.includes('SECRET') || key === 'ADMIN_PASSWORD';
-        result[key] = isSensitive && val.length > 4 ? '•'.repeat(val.length - 4) + val.slice(-4) : val;
+        const val = process.env[key] ?? '';
+        result[key] = mask(key, val);
     }
     return NextResponse.json(result);
 }
@@ -52,25 +64,31 @@ export async function GET(req: NextRequest) {
 // POST — update one or more editable keys
 export async function POST(req: NextRequest) {
     if (!isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const body = await req.json() as Record<string, string>;
 
-    // Only allow whitelisted keys
     const updates: Record<string, string> = {};
-    for (const [k, v] of Object.entries(body)) {
-        if (!EDITABLE_KEYS.has(k)) continue;
+    for (const key of EDITABLE_KEYS) {
+        const v = body[key];
         if (typeof v !== 'string') continue;
-        // Ignore if still masked (user didn't change the value)
-        if (/^•+.{0,4}$/.test(v)) continue;
-        updates[k] = v;
+        if (!v.trim()) continue;                     // skip blank fields
+        if (/^•+.{0,4}$/.test(v)) continue;         // skip masked values (unchanged)
+        updates[key] = v;
     }
 
     if (!Object.keys(updates).length) {
         return NextResponse.json({ ok: true, updated: 0 });
     }
 
-    const env = readEnv();
+    // Apply to process.env so the running instance picks them up immediately
+    for (const [k, v] of Object.entries(updates)) {
+        process.env[k] = v;
+    }
+
+    // Persist to .env.local for local dev (no-op on Azure)
+    const env = readEnvFile();
     Object.assign(env, updates);
-    writeEnv(env);
+    writeEnvFile(env);
 
     return NextResponse.json({ ok: true, updated: Object.keys(updates).length });
 }

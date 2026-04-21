@@ -13,7 +13,11 @@ const STATUS_BASE = IS_SANDBOX
     : 'https://api.phonepe.com/apis/pg/checkout/v2/order';
 // Status endpoint: {STATUS_BASE}/{merchantOrderId}/status
 
+let cachedToken: { value: string; expiresAt: number } | null = null;
+
 async function getAccessToken(): Promise<string> {
+    if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.value;
+
     const params = new URLSearchParams({
         client_id: process.env.PHONEPE_CLIENT_ID!,
         client_version: process.env.PHONEPE_CLIENT_VERSION || '1',
@@ -29,7 +33,12 @@ async function getAccessToken(): Promise<string> {
 
     if (!res.ok) throw new Error(`PhonePe OAuth failed: ${await res.text()}`);
     const data = await res.json();
-    return data.access_token as string;
+
+    // Cache for 5 minutes less than the actual expiry to avoid edge expiry races
+    const ttlMs = ((data.expires_in as number) ?? 3600) * 1000 - 5 * 60 * 1000;
+    cachedToken = { value: data.access_token as string, expiresAt: Date.now() + ttlMs };
+
+    return cachedToken.value;
 }
 
 export async function GET(req: NextRequest) {
