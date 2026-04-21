@@ -43,3 +43,6 @@ next-env.d.ts
 /whatsapp-service/.wwebjs*
 /whatsapp-service/node_modules
 /whatsapp-service/package*
+
+# uploaded images live in Azure Blob Storage, not in the repo
+/public/uploads/

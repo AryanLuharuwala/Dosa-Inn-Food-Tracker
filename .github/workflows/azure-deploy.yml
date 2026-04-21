@@ -34,25 +34,18 @@ jobs:
           NEXT_PUBLIC_BASE_URL: ${{ secrets.NEXT_PUBLIC_BASE_URL }}
         run: npm run build
 
-      # Copy public/ and static assets into the standalone bundle
+      # Copy only static assets (no uploads — those live in Azure Blob Storage)
       - name: Assemble standalone package
         run: |
           cp -r public .next/standalone/public
+          rm -rf .next/standalone/public/uploads
           cp -r .next/static .next/standalone/.next/static
-
-      # Azure expects a start command; we wire it via a tiny startup script
-      - name: Write startup script
-        run: |
-          cat > .next/standalone/startup.sh << 'EOF'
-          #!/bin/sh
-          exec node server.js
-          EOF
-          chmod +x .next/standalone/startup.sh
 
       - name: Zip standalone for deploy
         run: |
           cd .next/standalone
           zip -r ../../deploy.zip . -x "*.git*"
+          echo "Deploy zip size: $(du -sh ../../deploy.zip | cut -f1)"
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
