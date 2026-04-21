@@ -22,12 +22,18 @@ export async function logCartAbandonment(entry: Record<string, unknown>) { await
 
 export async function getMenuItems() {
     const db = await getDb();
-    const docs = await db.collection('menu_items').find({}).sort({ createdAt: 1 }).toArray();
+    const docs = await db.collection('menu_items').find({}).toArray();
 
     if (docs.length === 0) {
         await seedMenuItemsToDb();
         return getMenuItems();
     }
+
+    docs.sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return ta - tb;
+    });
 
     return docs.map(d => ({
         id: String(d._id ?? d.id),
@@ -88,12 +94,21 @@ export async function deleteMenuItemById(id: string) {
 
 export async function getCategories() {
     const db = await getDb();
-    const docs = await db.collection('categories').find({}).sort({ sortOrder: 1, createdAt: 1 }).toArray();
+    const docs = await db.collection('categories').find({}).toArray();
 
     if (docs.length === 0) {
         await seedCategoriesToDb();
         return getCategories();
     }
+
+    docs.sort((a, b) => {
+        const sa = (a.sortOrder as number) ?? 0;
+        const sb = (b.sortOrder as number) ?? 0;
+        if (sa !== sb) return sa - sb;
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return ta - tb;
+    });
 
     return docs.map(d => ({
         id: String(d._id ?? d.id),
@@ -245,7 +260,12 @@ export interface ChefCategory {
 
 export async function getChefs(): Promise<Chef[]> {
     const db = await getDb();
-    const docs = await db.collection('chefs').find({}).sort({ createdAt: 1 }).toArray();
+    const docs = await db.collection('chefs').find({}).toArray();
+    docs.sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return ta - tb;
+    });
     return docs.map(d => ({ id: d.id, name: d.name, is_active: d.is_active, color: d.color })) as Chef[];
 }
 
