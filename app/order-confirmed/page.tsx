@@ -7,8 +7,10 @@ import styles from './page.module.css';
 
 interface OrderData {
     orderId: string;
-    tableNumber: string;
+    orderType?: 'dine-in' | 'preorder';
+    tableNumber: string | null;
     tokenNumber: number;
+    preorderDetails?: { pickupTime: string; customerName?: string; customerPhone?: string } | null;
     items: Array<{
         menuItem: { name: string };
         quantity: number;
@@ -29,7 +31,7 @@ export default function OrderConfirmedPage() {
     const [showConfetti, setShowConfetti] = useState(true);
 
     useEffect(() => {
-        const orderData = sessionStorage.getItem('lastOrder');
+        const orderData = localStorage.getItem('lastOrder');
         if (orderData) {
             setOrder(JSON.parse(orderData));
         } else {
@@ -102,20 +104,47 @@ export default function OrderConfirmedPage() {
                 {/* Order Details Card */}
                 <div className={styles.orderCard}>
                     <div className={styles.orderId}>
-                        <span className={styles.orderLabel}>Token No.</span>
-                        <span className={styles.orderValue}>#{order.tokenNumber}</span>
+                        <span className={styles.orderLabel}>
+                            {order.orderType === 'preorder' ? 'Parcel' : 'Token No.'}
+                        </span>
+                        <span className={styles.orderValue}>
+                            {order.orderType === 'preorder'
+                                ? '#' + (order.orderId?.slice(-4).toUpperCase() || '')
+                                : '#' + order.tokenNumber}
+                        </span>
                     </div>
 
                     <div className={styles.divider} />
 
                     <div className={styles.tableInfo}>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="11" width="18" height="10" rx="2" />
-                            <path d="M7 11V7a5 5 0 0110 0v4" />
-                        </svg>
+                        {order.orderType === 'preorder' ? (
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+                            </svg>
+                        ) : (
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="11" width="18" height="10" rx="2" />
+                                <path d="M7 11V7a5 5 0 0110 0v4" />
+                            </svg>
+                        )}
                         <div>
-                            <span className={styles.tableLabel}>Delivering to</span>
-                            <span className={styles.tableNumber}>Token No {order.tableNumber}</span>
+                            {order.orderType === 'preorder' ? (
+                                <>
+                                    <span className={styles.tableLabel}>Pickup time</span>
+                                    <span className={styles.tableNumber}>{order.preorderDetails?.pickupTime || 'N/A'}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className={styles.tableLabel}>
+                                        {order.tableNumber && order.tableNumber !== '0' ? 'Table' : 'Token'}
+                                    </span>
+                                    <span className={styles.tableNumber}>
+                                        {order.tableNumber && order.tableNumber !== '0'
+                                            ? `Table ${order.tableNumber}`
+                                            : `Token No. ${order.tokenNumber}`}
+                                    </span>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -165,7 +194,9 @@ export default function OrderConfirmedPage() {
 
                 {/* Message */}
                 <div className={styles.message}>
-                    <p>Sit back and relax. We'll bring your order to your table.</p>
+                    <p>{order.orderType === 'preorder'
+                        ? `See you at ${order.preorderDetails?.pickupTime || 'pickup time'}! Your parcel will be ready.`
+                        : 'Sit back and relax. We\'ll bring your order to your table.'}</p>
                 </div>
 
                 {/* CTAs */}

@@ -1,12 +1,22 @@
 /**
- * Server-side event bus. API routes call `emit(channel)` after mutating data.
+ * Server-side event bus. API routes call `emit(channel, resource)` after mutating data.
  * The SSE endpoint holds open responses and flushes them when notified.
  * Works in Node.js runtime only (not Edge).
+ *
+ * Stored on `globalThis` so that Next.js hot-reload in dev (which re-evaluates
+ * modules but reuses the same Node process) doesn't create a fresh Map and lose
+ * all existing SSE subscribers.
  */
 
-type Listener = () => void;
+type Listener = (resource: string) => void;
 
-const listeners = new Map<string, Set<Listener>>();
+declare global {
+    // eslint-disable-next-line no-var
+    var __sseListeners: Map<string, Set<Listener>> | undefined;
+}
+
+const listeners: Map<string, Set<Listener>> =
+    globalThis.__sseListeners ?? (globalThis.__sseListeners = new Map());
 
 export function subscribe(channel: string, fn: Listener): () => void {
     if (!listeners.has(channel)) listeners.set(channel, new Set());
@@ -14,8 +24,7 @@ export function subscribe(channel: string, fn: Listener): () => void {
     return () => listeners.get(channel)?.delete(fn);
 }
 
-export function emit(channel: string) {
-    listeners.get(channel)?.forEach(fn => fn());
-    // Always emit on the wildcard channel so global listeners get notified
-    if (channel !== '*') listeners.get('*')?.forEach(fn => fn());
+export function emit(channel: string, resource: string) {
+    listeners.get(channel)?.forEach(fn => fn(resource));
+    if (channel !== '*') listeners.get('*')?.forEach(fn => fn(resource));
 }

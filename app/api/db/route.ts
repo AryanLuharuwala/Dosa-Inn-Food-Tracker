@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
     getMenuItems, saveMenuItems,
-    getCategories,
+    getCategories, saveCategories,
     getOrders, appendOrder, updateOrderStatus as dbUpdateOrderStatus,
     getSettings, saveSettings,
     getChefs, saveChefs,
@@ -9,15 +9,36 @@ import {
     logCancellation, logCartAbandonment, logPayment,
 } from '@/lib/localDb';
 import type { Order, Chef, ChefCategory } from '@/lib/localDb';
-import { menuItems as seedMenuItems } from '@/lib/menuData';
 import type { MenuItem } from '@/lib/menuData';
 import { emit } from '@/lib/serverEvents';
+import { sendWhatsApp, formatOrderMessage } from '@/lib/whatsapp';
+import { isAdminRequest, getVisitorId } from '@/lib/apiAuth';
+import { consumePaymentToken } from '@/lib/paymentTokens';
 
-// GET /api/db?resource=menu_items|categories|orders|settings|chefs|chef_categories
+const ADMIN_ONLY = new Set([
+    'menu_update_item', 'menu_add_item', 'menu_delete_item',
+    'category_add', 'category_update', 'category_delete',
+    'order_status',
+    'settings_save',
+    'chef_upsert', 'chef_delete', 'chef_categories_set',
+]);
+
+// Public POST actions — caller must still prove payment for order_add
+const PUBLIC_POST = new Set([
+    'order_add',
+    'log_cancellation', 'log_cart_abandonment', 'log_payment',
+]);
+
+function deny() {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
+
+// GET /api/db?resource=...
 export async function GET(req: NextRequest) {
     const resource = req.nextUrl.searchParams.get('resource');
     const tokenId = req.nextUrl.searchParams.get('tokenId');
     const orderId = req.nextUrl.searchParams.get('orderId');
+    const isAdmin = isAdminRequest(req);
 
     switch (resource) {
         case 'menu_items':
@@ -28,17 +49,23 @@ export async function GET(req: NextRequest) {
 
         case 'orders': {
             const orders = getOrders();
-            // Filter by tokenId for customer tracking
-            if (tokenId) {
-                const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
-                const filtered = orders.filter(o =>
-                    o.tokenId === tokenId &&
-                    new Date(o.timestamp).getTime() > twoHoursAgo
-                );
-                if (orderId) return NextResponse.json(filtered.filter(o => o.orderId === orderId));
-                return NextResponse.json(filtered);
+
+            // Admin gets all orders (for kitchen/admin pages)
+            if (isAdmin) {
+                return NextResponse.json(orders);
             }
-            return NextResponse.json(orders);
+
+            // Customers must supply their visitor tokenId — only see their own recent orders
+            if (!tokenId) {
+                return NextResponse.json({ error: 'tokenId required' }, { status: 400 });
+            }
+            const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+            const filtered = orders.filter(o =>
+                o.tokenId === tokenId &&
+                new Date(o.timestamp).getTime() > twoHoursAgo
+            );
+            if (orderId) return NextResponse.json(filtered.filter(o => o.orderId === orderId));
+            return NextResponse.json(filtered);
         }
 
         case 'active_tokens': {
@@ -50,6 +77,7 @@ export async function GET(req: NextRequest) {
         }
 
         case 'settings':
+            if (!isAdmin) return deny();
             return NextResponse.json(getSettings());
 
         case 'chefs':
@@ -57,6 +85,29 @@ export async function GET(req: NextRequest) {
 
         case 'chef_categories':
             return NextResponse.json(getChefCategories());
+
+        // Admin-only: export all data
+        case 'export': {
+            if (!isAdmin) return deny();
+            const format = req.nextUrl.searchParams.get('format') ?? 'json';
+            const payload = {
+                orders: getOrders(),
+                menu_items: getMenuItems(),
+                categories: getCategories(),
+                chefs: getChefs(),
+                settings: getSettings(),
+                exported_at: new Date().toISOString(),
+            };
+            if (format === 'csv') {
+                const orders = payload.orders as unknown as Record<string, unknown>[];
+                if (!orders.length) return new Response('orderId,tokenNumber,orderType,status,totalAmount,customerName,customerPhone,createdAt\n', { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } });
+                const keys = ['orderId', 'tokenNumber', 'orderType', 'status', 'totalAmount', 'customerName', 'customerPhone', 'createdAt'];
+                const rows = orders.map(o => keys.map(k => JSON.stringify(o[k] ?? '')).join(','));
+                const csv = [keys.join(','), ...rows].join('\n');
+                return new Response(csv, { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } });
+            }
+            return NextResponse.json(payload);
+        }
 
         default:
             return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
@@ -67,17 +118,28 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action } = body;
+    const isAdmin = isAdminRequest(req);
+
+    // Block anything not in our known action lists
+    if (!ADMIN_ONLY.has(action) && !PUBLIC_POST.has(action)) {
+        return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+    }
+
+    // Admin-only actions require the session cookie
+    if (ADMIN_ONLY.has(action) && !isAdmin) {
+        return deny();
+    }
 
     switch (action) {
 
-        // ── Menu ──────────────────────────────────────────────────────────────
+        // ── Menu (admin only) ─────────────────────────────────────────────────
 
         case 'menu_update_item': {
             const { id, updates } = body as { id: string; updates: Partial<MenuItem> };
             const items = getMenuItems() as MenuItem[];
             const next = items.map(i => i.id === id ? { ...i, ...updates } : i);
             saveMenuItems(next);
-            emit('menu');
+            emit('menu', 'menu_items');
             return NextResponse.json({ ok: true });
         }
 
@@ -85,7 +147,7 @@ export async function POST(req: NextRequest) {
             const { item } = body as { item: MenuItem };
             const items = getMenuItems() as MenuItem[];
             saveMenuItems([...items, item]);
-            emit('menu');
+            emit('menu', 'menu_items');
             return NextResponse.json({ ok: true });
         }
 
@@ -93,42 +155,105 @@ export async function POST(req: NextRequest) {
             const { id } = body as { id: string };
             const items = getMenuItems() as MenuItem[];
             saveMenuItems(items.filter(i => i.id !== id));
-            emit('menu');
+            emit('menu', 'menu_items');
+            return NextResponse.json({ ok: true });
+        }
+
+        case 'category_add': {
+            const { cat } = body as { cat: import('@/lib/menuData').Category };
+            const cats = getCategories() as import('@/lib/menuData').Category[];
+            saveCategories([...cats, cat]);
+            emit('menu', 'categories');
+            return NextResponse.json({ ok: true });
+        }
+
+        case 'category_update': {
+            const { id, updates } = body as { id: string; updates: Partial<import('@/lib/menuData').Category> };
+            const cats = getCategories() as import('@/lib/menuData').Category[];
+            saveCategories(cats.map(c => c.id === id ? { ...c, ...updates } : c));
+            emit('menu', 'categories');
+            return NextResponse.json({ ok: true });
+        }
+
+        case 'category_delete': {
+            const { id } = body as { id: string };
+            const cats = getCategories() as import('@/lib/menuData').Category[];
+            saveCategories(cats.filter(c => c.id !== id));
+            emit('menu', 'categories');
             return NextResponse.json({ ok: true });
         }
 
         // ── Orders ────────────────────────────────────────────────────────────
 
         case 'order_add': {
-            const { order } = body as { order: Order };
+            const { order, paymentToken } = body as { order: Order; paymentToken?: string };
+
+            // Verify server-issued payment token — prevents free order injection
+            if (!paymentToken || !consumePaymentToken(paymentToken, order.totalAmount)) {
+                return NextResponse.json(
+                    { error: 'Invalid or expired payment token' },
+                    { status: 403 }
+                );
+            }
+
             appendOrder(order);
-            emit('orders');
-            emit('menu'); // kitchen polling orders via menu channel
+            emit('menu', 'orders');
+
+            if (order.customerPhone) {
+                const msg = formatOrderMessage({
+                    customerName: order.customerName,
+                    status: 'pending',
+                    orderId: order.orderId,
+                    tokenNumber: order.tokenNumber,
+                    orderType: order.orderType,
+                    pickupTime: order.preorderDetails?.pickupTime,
+                    items: order.items.map(i => ({ name: i.menuItem.name, quantity: i.quantity })),
+                    totalAmount: order.totalAmount,
+                });
+                sendWhatsApp(order.customerPhone, msg).catch(() => {});
+            }
+
             return NextResponse.json({ ok: true });
         }
 
         case 'order_status': {
+            // Admin only (guard already checked above)
             const { orderId, status, items } = body as {
                 orderId: string;
                 status: Order['status'];
                 items?: Order['items'];
             };
             dbUpdateOrderStatus(orderId, status, items);
-            emit('orders');
-            emit('menu');
+            emit('menu', 'orders');
+
+            const updatedOrder = getOrders().find(o => o.orderId === orderId);
+            if (updatedOrder?.customerPhone) {
+                const msg = formatOrderMessage({
+                    customerName: updatedOrder.customerName,
+                    status,
+                    orderId,
+                    tokenNumber: updatedOrder.tokenNumber,
+                    orderType: updatedOrder.orderType,
+                    pickupTime: updatedOrder.preorderDetails?.pickupTime,
+                    items: updatedOrder.items.map(i => ({ name: i.menuItem.name, quantity: i.quantity })),
+                    totalAmount: updatedOrder.totalAmount,
+                });
+                sendWhatsApp(updatedOrder.customerPhone, msg).catch(() => {});
+            }
+
             return NextResponse.json({ ok: true });
         }
 
-        // ── Settings ──────────────────────────────────────────────────────────
+        // ── Settings (admin only) ─────────────────────────────────────────────
 
         case 'settings_save': {
             const { settings } = body;
             saveSettings(settings);
-            emit('menu');
+            emit('menu', 'settings');
             return NextResponse.json({ ok: true });
         }
 
-        // ── Chefs ─────────────────────────────────────────────────────────────
+        // ── Chefs (admin only) ────────────────────────────────────────────────
 
         case 'chef_upsert': {
             const { chef } = body as { chef: Chef };
@@ -137,7 +262,7 @@ export async function POST(req: NextRequest) {
             if (idx >= 0) chefs[idx] = chef;
             else chefs.push(chef);
             saveChefs(chefs);
-            emit('kitchen');
+            emit('kitchen', 'chefs');
             return NextResponse.json({ ok: true });
         }
 
@@ -147,7 +272,7 @@ export async function POST(req: NextRequest) {
             saveChefs(chefs);
             const cc = getChefCategories().filter(c => c.chef_id !== id);
             saveChefCategories(cc);
-            emit('kitchen');
+            emit('kitchen', 'chefs');
             return NextResponse.json({ ok: true });
         }
 
@@ -159,11 +284,11 @@ export async function POST(req: NextRequest) {
             const newRows: ChefCategory[] = category_ids.map(cid => ({ chef_id, category_id: cid }));
             cc = [...cc, ...newRows];
             saveChefCategories(cc);
-            emit('kitchen');
+            emit('kitchen', 'chef_categories');
             return NextResponse.json({ ok: true });
         }
 
-        // ── Analytics ─────────────────────────────────────────────────────────
+        // ── Analytics (public, append-only) ──────────────────────────────────
 
         case 'log_cancellation': {
             logCancellation(body.entry);

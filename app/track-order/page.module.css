@@ -426,3 +426,83 @@
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(26, 77, 46, 0.4);
 }
+
+/* Cancel Order */
+.cancelOrderBtn {
+    width: 100%;
+    margin-top: 12px;
+    padding: 11px;
+    border-radius: 10px;
+    border: 1.5px solid #ef5350;
+    background: transparent;
+    color: #ef5350;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.cancelOrderBtn:hover {
+    background: #fff5f5;
+}
+
+.cancelConfirm {
+    margin-top: 12px;
+    background: #fff5f5;
+    border: 1.5px solid #ef5350;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.cancelConfirm span {
+    font-size: 0.9rem;
+    color: #333;
+    font-weight: 500;
+}
+
+.cancelBtns {
+    display: flex;
+    gap: 8px;
+}
+
+.cancelNo {
+    flex: 1;
+    padding: 9px;
+    border-radius: 8px;
+    border: 1.5px solid #ccc;
+    background: white;
+    color: #555;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.cancelNo:hover {
+    background: #f5f5f5;
+}
+
+.cancelYes {
+    flex: 1;
+    padding: 9px;
+    border-radius: 8px;
+    border: none;
+    background: #ef5350;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.cancelYes:hover:not(:disabled) {
+    background: #e53935;
+}
+
+.cancelYes:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useMenu, Order } from '@/lib/menuContext';
 import { MenuItem } from '@/lib/menuData';
@@ -30,6 +30,58 @@ const AVAILABLE_IMAGES = [
     'veg-manchurian.png', 'veg-masala-pasta.png', 'veg-momos.png', 'veg-pasta.png',
     'veg-stir-fried-maggi.png',
 ];
+
+// Extracted to avoid re-creating inline functions in the map loop
+function AdminMenuItem({ item, editingPrice, newPrice, setNewPrice, onToggle, onPriceEdit, onPriceSave, onEdit, onDelete, styles }: {
+    item: MenuItem;
+    editingPrice: string | null;
+    newPrice: string;
+    setNewPrice: (v: string) => void;
+    onToggle: (id: string) => void;
+    onPriceEdit: (id: string, price: number) => void;
+    onPriceSave: (id: string) => void;
+    onEdit: (item: MenuItem) => void;
+    onDelete: (id: string) => void;
+    styles: Record<string, string>;
+}) {
+    return (
+        <div className={`${styles.menuItem} ${!item.isAvailable ? styles.menuItemDisabled : ''}`}>
+            <div className={styles.menuItemLeft}>
+                <button className={`${styles.toggle} ${item.isAvailable ? styles.toggleActive : ''}`} onClick={() => onToggle(item.id)} aria-label={item.isAvailable ? 'Disable' : 'Enable'}>
+                    <div className={styles.toggleThumb} />
+                </button>
+            </div>
+            {item.image && <img src={item.image} alt={item.name} className={styles.menuItemImage} />}
+            <div className={styles.menuItemInfo}>
+                <div className={styles.menuItemHeader}>
+                    <span className={styles.menuItemName}>{item.name}</span>
+                    {item.tags?.includes('bestSeller') && <span className={styles.tagBestseller}>Best</span>}
+                    {item.tags?.includes('readyFast') && <span className={styles.tagFast}>Fast</span>}
+                </div>
+            </div>
+            <div className={styles.menuItemActions}>
+                <div className={styles.menuItemPrice}>
+                    {editingPrice === item.id ? (
+                        <div className={styles.priceEdit}>
+                            <input type="number" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} className={styles.priceInput} autoFocus onKeyDown={(e) => e.key === 'Enter' && onPriceSave(item.id)} />
+                            <button className={styles.priceSaveBtn} onClick={() => onPriceSave(item.id)}>✓</button>
+                        </div>
+                    ) : (
+                        <button className={styles.priceBtn} onClick={() => onPriceEdit(item.id, item.price)}>₹{item.price}</button>
+                    )}
+                </div>
+                <div className={styles.itemActionBtns}>
+                    <button className={styles.editBtn} onClick={() => onEdit(item)} aria-label="Edit">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                    </button>
+                    <button className={styles.deleteBtn} onClick={() => onDelete(item.id)} aria-label="Delete">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 interface ItemFormData {
     name: string;
@@ -64,18 +116,29 @@ export default function AdminPage() {
         addMenuItem,
         updateMenuItem,
         deleteMenuItem,
+        addCategory,
+        updateCategory,
+        deleteCategory,
         setRushHourMode,
         toggleRushHourItem,
         setRushHourItems,
         updateOrderStatus
     } = useMenu();
 
-    const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'rush-hour'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'rush-hour' | 'whatsapp'>('orders');
+    const [menuSubTab, setMenuSubTab] = useState<'items' | 'categories'>('items');
     const [selectedCategory, setSelectedCategory] = useState('all');
+    const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
     const [editingPrice, setEditingPrice] = useState<string | null>(null);
     const [newPrice, setNewPrice] = useState('');
     const [menuSearch, setMenuSearch] = useState('');
     const [rushHourSearch, setRushHourSearch] = useState('');
+
+    // Category CRUD state
+    const [showCatModal, setShowCatModal] = useState(false);
+    const [editingCatId, setEditingCatId] = useState<string | null>(null);
+    const [catForm, setCatForm] = useState({ name: '', icon: '', tagline: '' });
+    const [deletingCatId, setDeletingCatId] = useState<string | null>(null);
 
     // Modal state
     const [showModal, setShowModal] = useState(false);
@@ -88,6 +151,110 @@ export default function AdminPage() {
     // Image upload state
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // WhatsApp state
+    const [waStatus, setWaStatus] = useState<'disconnected' | 'qr' | 'connecting' | 'ready'>('disconnected');
+    const [waQr, setWaQr] = useState<string | null>(null);
+    const [waInfo, setWaInfo] = useState<{ phone?: string; name?: string } | null>(null);
+    const [waPolling, setWaPolling] = useState(false);
+
+    const fetchWaStatus = useCallback(async () => {
+        try {
+            const res = await fetch('/api/whatsapp?action=status');
+            if (!res.ok) return;
+            const data = await res.json();
+            setWaStatus(data.status ?? 'disconnected');
+            if (data.phone) setWaInfo({ phone: data.phone, name: data.name });
+            else setWaInfo(null);
+        } catch { /* service not running */ }
+    }, []);
+
+    const fetchWaQr = useCallback(async () => {
+        try {
+            const res = await fetch('/api/whatsapp?action=qr');
+            if (!res.ok) return;
+            const data = await res.json();
+            setWaQr(data.qr ?? null);
+        } catch { /* ignore */ }
+    }, []);
+
+    // Poll status while on the WhatsApp tab or when connecting
+    useEffect(() => {
+        if (activeTab !== 'whatsapp' && waStatus === 'ready') return;
+        if (activeTab !== 'whatsapp' && waStatus === 'disconnected') return;
+        let handle: ReturnType<typeof setInterval>;
+        const poll = async () => {
+            await fetchWaStatus();
+            if (waStatus === 'qr') await fetchWaQr();
+        };
+        poll();
+        handle = setInterval(poll, waStatus === 'qr' ? 3000 : 8000);
+        return () => clearInterval(handle);
+    }, [activeTab, waStatus, fetchWaStatus, fetchWaQr]);
+
+    // Fetch QR whenever tab is opened and status is qr
+    useEffect(() => {
+        if (activeTab === 'whatsapp') {
+            fetchWaStatus().then(() => {
+                if (waStatus === 'qr') fetchWaQr();
+            });
+        }
+    }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleWaConnect = async () => {
+        setWaStatus('connecting');
+        setWaQr(null);
+        await fetchWaStatus();
+        await fetchWaQr();
+    };
+
+    const handleWaLogout = async () => {
+        await fetch('/api/whatsapp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
+        setWaStatus('disconnected');
+        setWaQr(null);
+        setWaInfo(null);
+    };
+
+    // WA logs
+    const [waLogs, setWaLogs] = useState<string>('');
+    const [waLogsOpen, setWaLogsOpen] = useState(false);
+    const fetchWaLogs = useCallback(async () => {
+        try {
+            const res = await fetch('/api/whatsapp?action=logs');
+            if (!res.ok) return;
+            const data = await res.json();
+            const combined = [data.out, data.err].filter(Boolean).join('\n--- stderr ---\n');
+            setWaLogs(combined || '(no logs yet)');
+        } catch { setWaLogs('Service unavailable'); }
+    }, []);
+
+    // Data export
+    const handleExport = useCallback(async (format: 'json' | 'csv') => {
+        const res = await fetch(`/api/db?resource=export&format=${format}`);
+        if (!res.ok) { alert('Export failed'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dosa-inn-export-${new Date().toISOString().slice(0, 10)}.${format}`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, []);
+
+    // Bell sound for new orders
+    const bellRef = useRef<HTMLAudioElement | null>(null);
+    const prevOrderCountRef = useRef<number | null>(null);
+    useEffect(() => {
+        bellRef.current = new Audio('/sounds/bell.mp3');
+        bellRef.current.volume = 0.7;
+    }, []);
+    useEffect(() => {
+        const pendingCount = orders.filter(o => o.status === 'pending').length;
+        if (prevOrderCountRef.current !== null && pendingCount > prevOrderCountRef.current) {
+            bellRef.current?.play().catch(() => {});
+        }
+        prevOrderCountRef.current = pendingCount;
+    }, [orders]);
 
     const handleImageUpload = async (file: File) => {
         setIsUploading(true);
@@ -273,6 +440,40 @@ export default function AdminPage() {
         setDeletingItemId(null);
     };
 
+    const toggleCategoryCollapse = (catId: string) => {
+        setCollapsedCategories(prev => {
+            const next = new Set(prev);
+            if (next.has(catId)) next.delete(catId);
+            else next.add(catId);
+            return next;
+        });
+    };
+
+    const openAddCatModal = () => {
+        setEditingCatId(null);
+        setCatForm({ name: '', icon: '🍽️', tagline: '' });
+        setShowCatModal(true);
+    };
+
+    const openEditCatModal = (cat: import('@/lib/menuData').Category) => {
+        setEditingCatId(cat.id);
+        setCatForm({ name: cat.name, icon: cat.icon, tagline: cat.tagline || '' });
+        setShowCatModal(true);
+    };
+
+    const handleCatFormSubmit = () => {
+        if (!catForm.name.trim() || !catForm.icon.trim()) return;
+        if (editingCatId) {
+            updateCategory(editingCatId, { name: catForm.name.trim(), icon: catForm.icon.trim(), tagline: catForm.tagline.trim() || undefined });
+        } else {
+            const id = catForm.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            const uniqueId = categories.find(c => c.id === id) ? `${id}-${Date.now()}` : id;
+            addCategory({ id: uniqueId, name: catForm.name.trim(), icon: catForm.icon.trim(), tagline: catForm.tagline.trim() || undefined });
+        }
+        setShowCatModal(false);
+        setEditingCatId(null);
+    };
+
     // Calculate analytics
     const todayOrders = orders.filter(o => {
         const orderDate = new Date(o.timestamp).toDateString();
@@ -318,6 +519,9 @@ export default function AdminPage() {
                     <span className={styles.adminBadge}>Admin</span>
                     <Link href="/kitchen" className={styles.adminBadge} style={{ backgroundColor: '#ff9800', cursor: 'pointer' }}>
                         🍳 Kitchen
+                    </Link>
+                    <Link href="/cook" className={styles.adminBadge} style={{ backgroundColor: '#111827', color: '#f59e0b', border: '1.5px solid #f59e0b', cursor: 'pointer' }}>
+                        🔥 Cook
                     </Link>
                 </div>
                 <div className={styles.rushHourToggle}>
@@ -431,6 +635,16 @@ export default function AdminPage() {
                         <span className={styles.badgeOrange}>{rushHourItems.length}</span>
                     )}
                 </button>
+                <button
+                    className={`${styles.tab} ${activeTab === 'whatsapp' ? styles.tabActive : ''}`}
+                    onClick={() => setActiveTab('whatsapp')}
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    WA
+                    {waStatus === 'ready' && <span className={styles.badgeGreen}>●</span>}
+                </button>
             </div >
 
             {/* Content */}
@@ -530,156 +744,135 @@ export default function AdminPage() {
                 }
 
                 {/* Menu Tab */}
-                {
-                    activeTab === 'menu' && (
-                        <div className={styles.menuTab}>
-                            <div className={styles.menuHeader}>
-                                <div className={styles.menuHeaderTop}>
-                                    <div>
-                                        <h2 className={styles.sectionTitle}>Menu Management</h2>
-                                        <p className={styles.menuSubtitle}>
-                                            {activeItems} active • {disabledItems} hidden
-                                        </p>
-                                    </div>
+                {activeTab === 'menu' && (
+                    <div className={styles.menuTab}>
+                        <div className={styles.menuHeader}>
+                            <div className={styles.menuHeaderTop}>
+                                <div>
+                                    <h2 className={styles.sectionTitle}>Menu Management</h2>
+                                    <p className={styles.menuSubtitle}>{activeItems} active • {disabledItems} hidden</p>
+                                </div>
+                                {menuSubTab === 'items' ? (
                                     <button className={styles.addItemBtn} onClick={openAddModal}>
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <path d="M12 5v14M5 12h14" />
-                                        </svg>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                                         Add Item
                                     </button>
-                                </div>
-                            </div>
-
-                            {/* Search Bar */}
-                            <div className={styles.searchBar}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="11" cy="11" r="8" />
-                                    <path d="M21 21l-4.35-4.35" />
-                                </svg>
-                                <input
-                                    type="text"
-                                    placeholder="Search menu items..."
-                                    value={menuSearch}
-                                    onChange={(e) => setMenuSearch(e.target.value)}
-                                    className={styles.searchInput}
-                                />
-                                {menuSearch && (
-                                    <button
-                                        className={styles.clearBtn}
-                                        onClick={() => setMenuSearch('')}
-                                    >
-                                        ✕
+                                ) : (
+                                    <button className={styles.addItemBtn} onClick={openAddCatModal}>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+                                        Add Category
                                     </button>
                                 )}
                             </div>
-
-                            <div className={styles.categorySelect}>
-                                <select
-                                    value={selectedCategory}
-                                    onChange={(e) => setSelectedCategory(e.target.value)}
-                                    className={styles.select}
-                                >
-                                    <option value="all">All Categories</option>
-                                    {categories.map(cat => (
-                                        <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className={styles.menuList}>
-                                {filteredMenuItems.length === 0 ? (
-                                    <div className={styles.noResults}>No items found</div>
-                                ) : (
-                                    filteredMenuItems.map(item => (
-                                        <div key={item.id} className={`${styles.menuItem} ${!item.isAvailable ? styles.menuItemDisabled : ''}`}>
-                                            <div className={styles.menuItemLeft}>
-                                                <button
-                                                    className={`${styles.toggle} ${item.isAvailable ? styles.toggleActive : ''}`}
-                                                    onClick={() => toggleItemAvailability(item.id)}
-                                                    aria-label={item.isAvailable ? 'Disable item' : 'Enable item'}
-                                                >
-                                                    <div className={styles.toggleThumb} />
-                                                </button>
-                                            </div>
-                                            {item.image && (
-                                                <img
-                                                    src={item.image}
-                                                    alt={item.name}
-                                                    className={styles.menuItemImage}
-                                                />
-                                            )}
-                                            <div className={styles.menuItemInfo}>
-                                                <div className={styles.menuItemHeader}>
-                                                    <span className={styles.menuItemName}>{item.name}</span>
-                                                    {item.tags?.includes('bestSeller') && (
-                                                        <span className={styles.tagBestseller}>Best</span>
-                                                    )}
-                                                    {item.tags?.includes('readyFast') && (
-                                                        <span className={styles.tagFast}>Fast</span>
-                                                    )}
-                                                </div>
-                                                <span className={styles.menuItemCategory}>
-                                                    {categories.find(c => c.id === item.categoryId)?.icon}{' '}
-                                                    {categories.find(c => c.id === item.categoryId)?.name}
-                                                </span>
-                                            </div>
-                                            <div className={styles.menuItemActions}>
-                                                <div className={styles.menuItemPrice}>
-                                                    {editingPrice === item.id ? (
-                                                        <div className={styles.priceEdit}>
-                                                            <input
-                                                                type="number"
-                                                                value={newPrice}
-                                                                onChange={(e) => setNewPrice(e.target.value)}
-                                                                className={styles.priceInput}
-                                                                autoFocus
-                                                                onKeyDown={(e) => e.key === 'Enter' && handlePriceSave(item.id)}
-                                                            />
-                                                            <button
-                                                                className={styles.priceSaveBtn}
-                                                                onClick={() => handlePriceSave(item.id)}
-                                                            >
-                                                                ✓
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <button
-                                                            className={styles.priceBtn}
-                                                            onClick={() => handlePriceEdit(item.id, item.price)}
-                                                        >
-                                                            ₹{item.price}
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <div className={styles.itemActionBtns}>
-                                                    <button
-                                                        className={styles.editBtn}
-                                                        onClick={() => openEditModal(item)}
-                                                        aria-label="Edit item"
-                                                    >
-                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                                                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        className={styles.deleteBtn}
-                                                        onClick={() => handleDeleteConfirm(item.id)}
-                                                        aria-label="Delete item"
-                                                    >
-                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                                                        </svg>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
+                            {/* Sub-tab switcher */}
+                            <div className={styles.menuSubTabs}>
+                                <button
+                                    className={`${styles.menuSubTab} ${menuSubTab === 'items' ? styles.menuSubTabActive : ''}`}
+                                    onClick={() => setMenuSubTab('items')}
+                                >Items</button>
+                                <button
+                                    className={`${styles.menuSubTab} ${menuSubTab === 'categories' ? styles.menuSubTabActive : ''}`}
+                                    onClick={() => setMenuSubTab('categories')}
+                                >Categories</button>
                             </div>
                         </div>
-                    )
-                }
+
+                        {menuSubTab === 'items' && (
+                            <>
+                                {/* Search */}
+                                <div className={styles.searchBar}>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+                                    <input type="text" placeholder="Search menu items..." value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} className={styles.searchInput} />
+                                    {menuSearch && <button className={styles.clearBtn} onClick={() => setMenuSearch('')}>✕</button>}
+                                </div>
+
+                                {/* Grouped by category */}
+                                <div className={styles.menuList}>
+                                    {menuSearch.trim() ? (
+                                        // Flat list when searching
+                                        filteredMenuItems.length === 0 ? (
+                                            <div className={styles.noResults}>No items found</div>
+                                        ) : filteredMenuItems.map(item => (
+                                            <AdminMenuItem
+                                                key={item.id}
+                                                item={item}
+                                                editingPrice={editingPrice}
+                                                newPrice={newPrice}
+                                                setNewPrice={setNewPrice}
+                                                onToggle={toggleItemAvailability}
+                                                onPriceEdit={handlePriceEdit}
+                                                onPriceSave={handlePriceSave}
+                                                onEdit={openEditModal}
+                                                onDelete={handleDeleteConfirm}
+                                                styles={styles}
+                                            />
+                                        ))
+                                    ) : (
+                                        // Grouped by category
+                                        categories.map(cat => {
+                                            const catItems = menuItems.filter(i => i.categoryId === cat.id);
+                                            if (catItems.length === 0) return null;
+                                            const collapsed = collapsedCategories.has(cat.id);
+                                            return (
+                                                <div key={cat.id} className={styles.categoryGroup}>
+                                                    <div className={styles.categoryGroupHeader} onClick={() => toggleCategoryCollapse(cat.id)}>
+                                                        <span className={styles.categoryGroupIcon}>{cat.icon}</span>
+                                                        <span className={styles.categoryGroupName}>{cat.name}</span>
+                                                        <span className={styles.categoryGroupCount}>{catItems.length}</span>
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: 'auto', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                                                            <path d="M6 9l6 6 6-6" />
+                                                        </svg>
+                                                    </div>
+                                                    {!collapsed && catItems.map(item => (
+                                                        <AdminMenuItem
+                                                            key={item.id}
+                                                            item={item}
+                                                            editingPrice={editingPrice}
+                                                            newPrice={newPrice}
+                                                            setNewPrice={setNewPrice}
+                                                            onToggle={toggleItemAvailability}
+                                                            onPriceEdit={handlePriceEdit}
+                                                            onPriceSave={handlePriceSave}
+                                                            onEdit={openEditModal}
+                                                            onDelete={handleDeleteConfirm}
+                                                            styles={styles}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        {menuSubTab === 'categories' && (
+                            <div className={styles.menuList}>
+                                {categories.map(cat => {
+                                    const itemCount = menuItems.filter(i => i.categoryId === cat.id).length;
+                                    return (
+                                        <div key={cat.id} className={styles.catManageRow}>
+                                            <span className={styles.catManageIcon}>{cat.icon}</span>
+                                            <div className={styles.catManageInfo}>
+                                                <span className={styles.catManageName}>{cat.name}</span>
+                                                {cat.tagline && <span className={styles.catManageTagline}>{cat.tagline}</span>}
+                                                <span className={styles.catManageCount}>{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                                            </div>
+                                            <div className={styles.itemActionBtns}>
+                                                <button className={styles.editBtn} onClick={() => openEditCatModal(cat)} aria-label="Edit category">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                                </button>
+                                                <button className={styles.deleteBtn} onClick={() => setDeletingCatId(cat.id)} aria-label="Delete category" disabled={itemCount > 0} title={itemCount > 0 ? 'Move items out first' : 'Delete'}>
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Rush Hour Tab */}
                 {
@@ -767,6 +960,118 @@ export default function AdminPage() {
                         </div>
                     )
                 }
+
+                {/* WhatsApp Tab */}
+                {activeTab === 'whatsapp' && (
+                    <div className={styles.waTab}>
+                        <div className={styles.waHeader}>
+                            <h2 className={styles.sectionTitle}>WhatsApp Notifications</h2>
+                            <p className={styles.menuSubtitle}>Connect WhatsApp Web to send order updates to customers automatically.</p>
+                        </div>
+
+                        {/* Status card */}
+                        <div className={styles.waStatusCard}>
+                            <div className={styles.waStatusRow}>
+                                <span className={`${styles.waStatusDot} ${styles[`waDot_${waStatus}`]}`} />
+                                <span className={styles.waStatusLabel}>
+                                    {waStatus === 'ready' && `Connected${waInfo?.name ? ` as ${waInfo.name}` : ''}${waInfo?.phone ? ` (+${waInfo.phone})` : ''}`}
+                                    {waStatus === 'qr' && 'Scan QR code with WhatsApp'}
+                                    {waStatus === 'connecting' && 'Connecting…'}
+                                    {waStatus === 'disconnected' && 'Not connected'}
+                                </span>
+                            </div>
+
+                            {waStatus === 'ready' && (
+                                <button className={styles.waLogoutBtn} onClick={handleWaLogout}>Disconnect</button>
+                            )}
+                            {waStatus === 'disconnected' && (
+                                <button className={styles.waConnectBtn} onClick={handleWaConnect}>Connect</button>
+                            )}
+                            {waStatus === 'connecting' && (
+                                <button className={styles.waConnectBtn} onClick={fetchWaQr}>Refresh QR</button>
+                            )}
+                        </div>
+
+                        {/* QR code */}
+                        {(waStatus === 'qr' || waStatus === 'connecting') && waQr && (
+                            <div className={styles.waQrCard}>
+                                <p className={styles.waQrInstructions}>
+                                    Open WhatsApp → Linked Devices → Link a device → scan this code
+                                </p>
+                                <img src={waQr} alt="WhatsApp QR Code" className={styles.waQrImage} />
+                                <p className={styles.waQrHint}>QR refreshes automatically every 3 seconds</p>
+                            </div>
+                        )}
+
+                        {waStatus === 'ready' && (
+                            <div className={styles.waReadyInfo}>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#25D366', flexShrink: 0 }}>
+                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                                </svg>
+                                <div>
+                                    <p style={{ fontWeight: 600, marginBottom: 4 }}>Notifications active</p>
+                                    <p style={{ fontSize: '0.875rem', color: '#666' }}>
+                                        Customers who provide their number will receive order confirmations and status updates automatically.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Data Export */}
+                        <div className={styles.waInstructions}>
+                            <h3>Export Data</h3>
+                            <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: 12 }}>
+                                Download all orders, menu, and settings as a single file.
+                            </p>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button className={styles.waConnectBtn} onClick={() => handleExport('json')}>
+                                    Download JSON
+                                </button>
+                                <button className={styles.waConnectBtn} onClick={() => handleExport('csv')}>
+                                    Download CSV (orders)
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* WA Logs */}
+                        <div className={styles.waInstructions}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <h3 style={{ margin: 0 }}>Service Logs</h3>
+                                <button
+                                    className={styles.waConnectBtn}
+                                    style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                                    onClick={async () => {
+                                        await fetchWaLogs();
+                                        setWaLogsOpen(v => !v);
+                                    }}
+                                >
+                                    {waLogsOpen ? 'Hide Logs' : 'View Logs'}
+                                </button>
+                            </div>
+                            {waLogsOpen && (
+                                <pre style={{
+                                    background: '#111', color: '#d4f4d4', borderRadius: 8,
+                                    padding: '12px 16px', fontSize: '0.75rem', overflowX: 'auto',
+                                    maxHeight: 320, overflowY: 'auto', whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-all', marginTop: 8,
+                                }}>
+                                    {waLogs}
+                                </pre>
+                            )}
+                        </div>
+
+                        <div className={styles.waInstructions}>
+                            <h3>How it works</h3>
+                            <ol>
+                                <li>Run <code>./install.sh</code> on the server — it sets up everything automatically</li>
+                                <li>Or manually: <code>pm2 start ecosystem.config.js</code> from the project root</li>
+                                <li>Click <strong>Connect</strong> above and scan the QR with your WhatsApp</li>
+                                <li>Customers enter their phone number at checkout (optional)</li>
+                                <li>They automatically receive order confirmation and status updates</li>
+                            </ol>
+                        </div>
+                    </div>
+                )}
 
                 {/* Analytics Tab */}
             </div >
@@ -959,6 +1264,57 @@ export default function AdminPage() {
                     </div>
                 )
             }
+
+            {/* Category Add/Edit Modal */}
+            {showCatModal && (
+                <div className={styles.modalOverlay} onClick={() => setShowCatModal(false)}>
+                    <div className={styles.modal} onClick={e => e.stopPropagation()}>
+                        <div className={styles.modalHeader}>
+                            <h2 className={styles.modalTitle}>{editingCatId ? 'Edit Category' : 'Add Category'}</h2>
+                            <button className={styles.modalClose} onClick={() => setShowCatModal(false)}>✕</button>
+                        </div>
+                        <div className={styles.modalBody}>
+                            <div className={styles.formRow}>
+                                <div className={styles.formGroup} style={{ flex: '0 0 80px' }}>
+                                    <label className={styles.formLabel}>Icon</label>
+                                    <input type="text" className={styles.formInput} value={catForm.icon} onChange={e => setCatForm(p => ({ ...p, icon: e.target.value }))} placeholder="🍽️" style={{ fontSize: '1.4rem', textAlign: 'center' }} />
+                                </div>
+                                <div className={styles.formGroup}>
+                                    <label className={styles.formLabel}>Name *</label>
+                                    <input type="text" className={styles.formInput} value={catForm.name} onChange={e => setCatForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Parathas" />
+                                </div>
+                            </div>
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>Tagline</label>
+                                <input type="text" className={styles.formInput} value={catForm.tagline} onChange={e => setCatForm(p => ({ ...p, tagline: e.target.value }))} placeholder="Optional subtitle" />
+                            </div>
+                        </div>
+                        <div className={styles.modalFooter}>
+                            <button className={styles.modalCancelBtn} onClick={() => setShowCatModal(false)}>Cancel</button>
+                            <button className={styles.modalSaveBtn} onClick={handleCatFormSubmit} disabled={!catForm.name.trim() || !catForm.icon.trim()}>
+                                {editingCatId ? 'Save Changes' : 'Add Category'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Category Delete Confirmation */}
+            {deletingCatId && (
+                <div className={styles.modalOverlay} onClick={() => setDeletingCatId(null)}>
+                    <div className={styles.deleteModal} onClick={e => e.stopPropagation()}>
+                        <div className={styles.deleteModalIcon}>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#e53935" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                        </div>
+                        <h3 className={styles.deleteModalTitle}>Delete Category?</h3>
+                        <p className={styles.deleteModalText}>Delete <strong>{categories.find(c => c.id === deletingCatId)?.name}</strong>? This cannot be undone.</p>
+                        <div className={styles.deleteModalActions}>
+                            <button className={styles.modalCancelBtn} onClick={() => setDeletingCatId(null)}>Keep It</button>
+                            <button className={styles.deleteConfirmBtn} onClick={() => { deleteCategory(deletingCatId!); setDeletingCatId(null); }}>Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Delete Confirmation Modal */}
             {

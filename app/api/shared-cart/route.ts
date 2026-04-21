@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
             const { tableNumber, tokenNumber } = body as { tableNumber: string; tokenNumber: number };
             if (!tableNumber) return NextResponse.json({ error: 'tableNumber required' }, { status: 400 });
             const cart = createSharedCart(tableNumber, tokenNumber, visitorId);
-            emit(`shared-cart:${cart.code}`);
+            emit(`shared-cart:${cart.code}`, 'participants');
             return NextResponse.json(cart);
         }
 
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
             if (!code) return NextResponse.json({ error: 'code required' }, { status: 400 });
             const cart = joinSharedCart(code.toUpperCase(), visitorId, mergeParticipants);
             if (!cart) return NextResponse.json({ error: 'Cart not found or expired' }, { status: 404 });
-            emit(`shared-cart:${cart.code}`);
+            emit(`shared-cart:${cart.code}`, 'participants');
             return NextResponse.json(cart);
         }
 
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
             };
             const cart = updateSharedCartParticipant(code.toUpperCase(), visitorId, items, extras);
             if (!cart) return NextResponse.json({ error: 'Cart not found or participant not in cart' }, { status: 404 });
-            emit(`shared-cart:${code.toUpperCase()}`);
+            emit(`shared-cart:${code.toUpperCase()}`, 'participants');
             return NextResponse.json(cart);
         }
 

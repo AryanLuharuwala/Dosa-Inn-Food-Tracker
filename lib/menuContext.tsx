@@ -25,6 +25,8 @@ export interface Order {
     status: 'pending' | 'preparing' | 'ready' | 'delivered';
     tokenId?: string;
     phonePeOrderId?: string;
+    customerPhone?: string;
+    customerName?: string;
 }
 
 interface MenuContextType {
@@ -38,11 +40,14 @@ interface MenuContextType {
     addMenuItem: (item: MenuItem) => void;
     updateMenuItem: (itemId: string, updates: Partial<MenuItem>) => void;
     deleteMenuItem: (itemId: string) => void;
+    addCategory: (cat: Category) => void;
+    updateCategory: (catId: string, updates: Partial<Category>) => void;
+    deleteCategory: (catId: string) => void;
     setRushHourMode: (mode: boolean) => void;
     toggleRushHourItem: (itemId: string) => void;
     setRushHourItems: (itemIds: string[]) => void;
     addOrder: (order: Omit<Order, 'status'>) => void;
-    updateOrderStatus: (orderId: string, status: Order['status']) => void;
+    updateOrderStatus: (orderId: string, status: Order['status'], items?: Order['items']) => void;
     getAvailableItems: () => MenuItem[];
     refreshMenuState: () => void;
 }
@@ -75,35 +80,62 @@ export function MenuProvider({ children }: { children: ReactNode }) {
     const [rushHourMode, setRushHourModeState] = useState(false);
     const [rushHourItems, setRushHourItemsState] = useState<string[]>([]);
 
-    const loadAll = useCallback(async () => {
-        const [items, cats, ords, settings] = await Promise.all([
-            dbGet<MenuItem[]>('menu_items'),
-            dbGet<Category[]>('categories'),
-            dbGet<Order[]>('orders'),
-            dbGet<{ rushHourMode: boolean; rushHourItems: string[] }>('settings'),
-        ]);
-        if (items && items.length > 0) setMenuItems(items);
-        if (cats && cats.length > 0) setCategories(cats);
-        if (ords) setOrders(ords);
-        if (settings) {
-            setRushHourModeState(settings.rushHourMode);
-            setRushHourItemsState(settings.rushHourItems);
+    const loadResource = useCallback(async (resource: string) => {
+        switch (resource) {
+            case 'menu_items': {
+                const items = await dbGet<MenuItem[]>('menu_items');
+                if (items && items.length > 0) setMenuItems(items);
+                break;
+            }
+            case 'categories': {
+                const cats = await dbGet<Category[]>('categories');
+                if (cats && cats.length > 0) setCategories(cats);
+                break;
+            }
+            case 'orders': {
+                const ords = await dbGet<Order[]>('orders');
+                if (ords) setOrders(ords);
+                break;
+            }
+            case 'settings': {
+                const settings = await dbGet<{ rushHourMode: boolean; rushHourItems: string[] }>('settings');
+                if (settings) {
+                    setRushHourModeState(settings.rushHourMode);
+                    setRushHourItemsState(settings.rushHourItems);
+                }
+                break;
+            }
         }
     }, []);
+
+    const loadAll = useCallback(async () => {
+        await Promise.all([
+            loadResource('menu_items'),
+            loadResource('categories'),
+            loadResource('orders'),
+            loadResource('settings'),
+        ]);
+    }, [loadResource]);
 
     useEffect(() => {
         loadAll();
 
-        // SSE-driven refresh — no polling overhead
+        // SSE-driven refresh — fetches only the changed resource
         let es: EventSource;
         let retryTimeout: ReturnType<typeof setTimeout>;
 
         const connect = () => {
             es = new EventSource('/api/events?channel=menu');
-            es.addEventListener('change', () => loadAll());
+            es.addEventListener('change', (e: MessageEvent) => {
+                try {
+                    const { resource } = JSON.parse(e.data) as { resource: string };
+                    loadResource(resource);
+                } catch {
+                    loadAll(); // fallback if payload is malformed
+                }
+            });
             es.addEventListener('error', () => {
                 es.close();
-                // Reconnect after 3s if SSE drops
                 retryTimeout = setTimeout(connect, 3000);
             });
         };
@@ -145,6 +177,21 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await dbPost('menu_delete_item', { id: itemId });
     }, []);
 
+    const addCategory = useCallback(async (cat: Category) => {
+        setCategories(prev => [...prev, cat]);
+        await dbPost('category_add', { cat });
+    }, []);
+
+    const updateCategory = useCallback(async (catId: string, updates: Partial<Category>) => {
+        setCategories(prev => prev.map(c => c.id === catId ? { ...c, ...updates } : c));
+        await dbPost('category_update', { id: catId, updates });
+    }, []);
+
+    const deleteCategory = useCallback(async (catId: string) => {
+        setCategories(prev => prev.filter(c => c.id !== catId));
+        await dbPost('category_delete', { id: catId });
+    }, []);
+
     // ── Rush hour ─────────────────────────────────────────────────────────
 
     const setRushHourMode = useCallback(async (mode: boolean) => {
@@ -183,9 +230,9 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await dbPost('order_add', { order: newOrder });
     }, []);
 
-    const updateOrderStatus = useCallback(async (orderId: string, status: Order['status']) => {
-        setOrders(prev => prev.map(o => o.orderId === orderId ? { ...o, status } : o));
-        await dbPost('order_status', { orderId, status });
+    const updateOrderStatus = useCallback(async (orderId: string, status: Order['status'], items?: Order['items']) => {
+        setOrders(prev => prev.map(o => o.orderId === orderId ? { ...o, status, ...(items ? { items } : {}) } : o));
+        await dbPost('order_status', { orderId, status, ...(items ? { items } : {}) });
     }, []);
 
     // ── Utilities ─────────────────────────────────────────────────────────
@@ -199,6 +246,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
             rushHourMode, rushHourItems,
             toggleItemAvailability, updateItemPrice,
             addMenuItem, updateMenuItem, deleteMenuItem,
+            addCategory, updateCategory, deleteCategory,
             setRushHourMode, toggleRushHourItem, setRushHourItems,
             addOrder, updateOrderStatus,
             getAvailableItems, refreshMenuState,

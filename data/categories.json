@@ -1,0 +1,62 @@
+[
+  {
+    "id": "parathas",
+    "name": "Punjab De Swag Paratha",
+    "tagline": "Classic stuffed parathas",
+    "icon": "🫓"
+  },
+  {
+    "id": "pav-bhaji",
+    "name": "Pav Bhaji Street Legends",
+    "tagline": "Mumbai street vibes",
+    "icon": "🍞"
+  },
+  {
+    "id": "combos",
+    "name": "Desi Comfort Combos",
+    "tagline": "Mess upgrade, officially",
+    "icon": "🍛"
+  },
+  {
+    "id": "indo-chinese",
+    "name": "Indo-Chinese Favourites",
+    "tagline": "Hindi-chini bhai bhai",
+    "icon": "🥡"
+  },
+  {
+    "id": "noodles-rice",
+    "name": "Noodles & Rice Bar",
+    "tagline": "When Maggi isn't enough",
+    "icon": "🍜"
+  },
+  {
+    "id": "indian-curry",
+    "name": "Indian Curry House",
+    "tagline": "Proper food, proper mood",
+    "icon": "🍲"
+  },
+  {
+    "id": "snacks",
+    "name": "All-Time Snack Attack",
+    "tagline": "Midnight hunger department",
+    "icon": "🍿"
+  },
+  {
+    "id": "momos",
+    "name": "Campus Favourite Momos",
+    "tagline": "One plate is never enough",
+    "icon": "🥟"
+  },
+  {
+    "id": "quick-bites",
+    "name": "Quick Bites",
+    "tagline": "Fast & tasty",
+    "icon": "🥪"
+  },
+  {
+    "id": "beverages",
+    "name": "Chill Maar Beverages",
+    "tagline": "Thirst quenchers",
+    "icon": "🥤"
+  }
+]

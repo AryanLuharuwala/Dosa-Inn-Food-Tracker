@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
             // Initial heartbeat so the connection is established immediately
             send('connected', '{}');
 
-            const unsub = subscribe(channel, () => send('change', '{}'));
+            const unsub = subscribe(channel, (resource: string) => send('change', JSON.stringify({ resource })));
 
             // Keepalive every 25s to prevent proxy timeouts
             const keepalive = setInterval(() => {

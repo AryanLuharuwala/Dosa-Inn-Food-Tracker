@@ -411,6 +411,9 @@ export default function KitchenPage() {
                     <span className={styles.orderCount}>
                         {orders.length} active order{orders.length !== 1 ? 's' : ''}
                     </span>
+                    <Link href="/cook" className={styles.settingsBtn} style={{ textDecoration: 'none', background: '#111827', color: '#f59e0b', border: '1.5px solid #f59e0b' }}>
+                        🔥 Cook View
+                    </Link>
                     <button
                         className={styles.settingsBtn}
                         onClick={() => setShowSettings(!showSettings)}

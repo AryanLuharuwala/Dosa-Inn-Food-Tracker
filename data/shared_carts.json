@@ -1,17 +1,17 @@
 {
-  "EOHF5W": {
-    "code": "EOHF5W",
-    "tableNumber": "101",
-    "tokenNumber": 101,
-    "createdAt": "2026-04-21T03:19:04.801Z",
-    "expiresAt": "2026-04-21T05:19:04.801Z",
+  "63Q1TP": {
+    "code": "63Q1TP",
+    "tableNumber": "114",
+    "tokenNumber": 114,
+    "createdAt": "2026-04-21T05:06:58.416Z",
+    "expiresAt": "2026-04-21T07:06:58.416Z",
     "participants": [
       {
-        "visitorId": "57a202cf-ff5b-4a79-b1ff-87217511d154",
-        "joinedAt": "2026-04-21T03:19:04.801Z",
+        "visitorId": "a42c7b13-d9f9-4716-9ecd-b06992276ff9",
+        "joinedAt": "2026-04-21T05:06:58.416Z",
         "items": [
           {
-            "id": "aloo-paratha-1776741534876",
+            "id": "aloo-paratha-1776740459541",
             "menuItem": {
               "id": "aloo-paratha",
               "name": "Classic Aloo Paratha",
@@ -63,12 +63,12 @@
             "totalPrice": 1
           },
           {
-            "id": "methi-paratha-1776742722705",
+            "id": "onion-paratha-1776748429555",
             "menuItem": {
-              "id": "methi-paratha",
-              "name": "Methi Paratha",
-              "description": "Fresh methi leaves in soft paratha dough. Low-key healthy, high-key tasty. Kem chho? Your taste buds will be majama.",
-              "price": 70,
+              "id": "onion-paratha",
+              "name": "Onion Paratha",
+              "description": "Finely chopped onions mixed with mild spices, folded into a paratha that's lightly crisp and naturally sweet. Your only pyaas ka punchnama….",
+              "price": 60,
               "categoryId": "parathas",
               "addOns": [
                 {
@@ -105,18 +105,82 @@
                 }
               ],
               "isAvailable": true,
-              "image": "/menu-images/methi-paratha.png"
+              "image": "/menu-images/onion-paratha.png"
             },
             "quantity": 1,
             "selectedAddOns": [],
-            "totalPrice": 70
+            "totalPrice": 60
+          },
+          {
+            "id": "onion-paratha-1776751396121",
+            "menuItem": {
+              "id": "onion-paratha",
+              "name": "Onion Paratha",
+              "description": "Finely chopped onions mixed with mild spices, folded into a paratha that's lightly crisp and naturally sweet. Your only pyaas ka punchnama….",
+              "price": 60,
+              "categoryId": "parathas",
+              "addOns": [
+                {
+                  "id": "butter",
+                  "name": "Butter",
+                  "price": 10
+                },
+                {
+                  "id": "curd",
+                  "name": "Curd",
+                  "price": 10
+                },
+                {
+                  "id": "achar",
+                  "name": "Achar",
+                  "price": 5
+                },
+                {
+                  "id": "ghee",
+                  "name": "Ghee",
+                  "price": 15
+                }
+              ],
+              "extras": [
+                {
+                  "id": "dhaniya-chutney",
+                  "name": "Dhaniya Chutney",
+                  "price": 10
+                },
+                {
+                  "id": "schezwan-chutney",
+                  "name": "Schezwan Chutney",
+                  "price": 10
+                }
+              ],
+              "isAvailable": true,
+              "image": "/menu-images/onion-paratha.png"
+            },
+            "quantity": 1,
+            "selectedAddOns": [],
+            "totalPrice": 60
           }
         ],
+        "extras": []
+      }
+    ]
+  },
+  "7ERA72": {
+    "code": "7ERA72",
+    "tableNumber": "18",
+    "tokenNumber": 18,
+    "createdAt": "2026-04-21T05:48:43.058Z",
+    "expiresAt": "2026-04-21T07:48:43.058Z",
+    "participants": [
+      {
+        "visitorId": "57a202cf-ff5b-4a79-b1ff-87217511d154",
+        "joinedAt": "2026-04-21T05:48:43.058Z",
+        "items": [],
         "extras": []
       },
       {
         "visitorId": "1a29d93e-8a3a-4787-b178-6c329c4aa81e",
-        "joinedAt": "2026-04-21T03:19:33.106Z",
+        "joinedAt": "2026-04-21T05:48:52.642Z",
         "items": [
           {
             "id": "ratlami-sev-paratha-1776699446177",
@@ -368,25 +432,15 @@
             "quantity": 1,
             "selectedAddOns": [],
             "totalPrice": 1
-          }
-        ],
-        "extras": []
-      },
-      {
-        "visitorId": "0a14861d-e260-4a23-aea9-69e361efa495",
-        "joinedAt": "2026-04-21T03:48:45.892Z",
-        "items": [
+          },
           {
-            "id": "paneer-paratha-1776743370115",
+            "id": "onion-paratha-1776750547311",
             "menuItem": {
-              "id": "paneer-paratha",
-              "name": "Paneer Paratha",
-              "description": "Fresh paneer crumbled with spices and herbs, stuffed into a thick paratha and cooked slow for a rich bite. For when your hunger can't dance but your appetite sala... definitely can.",
-              "price": 80,
+              "id": "onion-paratha",
+              "name": "Onion Paratha",
+              "description": "Finely chopped onions mixed with mild spices, folded into a paratha that's lightly crisp and naturally sweet. Your only pyaas ka punchnama….",
+              "price": 60,
               "categoryId": "parathas",
-              "tags": [
-                "bestSeller"
-              ],
               "addOns": [
                 {
                   "id": "butter",
@@ -422,17 +476,11 @@
                 }
               ],
               "isAvailable": true,
-              "image": "/menu-images/paneer-paratha.png"
+              "image": "/menu-images/onion-paratha.png"
             },
             "quantity": 1,
-            "selectedAddOns": [
-              {
-                "id": "butter",
-                "name": "Butter",
-                "price": 10
-              }
-            ],
-            "totalPrice": 90
+            "selectedAddOns": [],
+            "totalPrice": 60
           }
         ],
         "extras": []

@@ -16,6 +16,9 @@
     font-weight: 700;
     color: var(--color-text);
     margin-bottom: var(--space-xs);
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .sectionSubtitle {
@@ -254,4 +257,39 @@
     font-size: var(--font-size-sm);
     line-height: 1.5;
     color: var(--color-text-secondary);
+}
+
+/* WhatsApp phone input */
+.phoneInputRow {
+    display: flex;
+    align-items: center;
+    background: var(--color-bg-card);
+    border: 1.5px solid #e0e0e0;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+.phoneInputRow:focus-within {
+    border-color: #25D366;
+}
+
+.phonePrefix {
+    padding: 12px 12px;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: #555;
+    background: #f5f5f5;
+    border-right: 1.5px solid #e0e0e0;
+    white-space: nowrap;
+}
+
+.phoneInput {
+    flex: 1;
+    padding: 12px 14px;
+    font-size: var(--font-size-base);
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--color-text);
 }

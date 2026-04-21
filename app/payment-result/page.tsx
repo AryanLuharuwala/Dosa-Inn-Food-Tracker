@@ -1,31 +1,45 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { Suspense, useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import LeafLoader from '@/components/LeafLoader';
 import { getUniqueToken } from '@/lib/tokens';
 import { useMenu } from '@/lib/menuContext';
 import { useCart } from '@/lib/cartContext';
+import { useSound } from '@/lib/useSound';
 
 type PayState = 'checking' | 'success' | 'failed' | 'expired';
 
 export default function PaymentResultPage() {
+    return (
+        <Suspense fallback={<LeafLoader isVisible variant="payment" />}>
+            <PaymentResultPageInner />
+        </Suspense>
+    );
+}
+
+function PaymentResultPageInner() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { addOrder } = useMenu();
     const { clearCart } = useCart();
     const [payState, setPayState] = useState<PayState>('checking');
     const [errorMsg, setErrorMsg] = useState('');
+    const [finalOrderId, setFinalOrderId] = useState<string | null>(null);
     const processed = useRef(false);
+    const playOrderPlaced = useSound('/sounds/order-placed.mp3', 0.7);
 
     useEffect(() => {
         if (processed.current) return;
         processed.current = true;
 
-        const pending = sessionStorage.getItem('pendingOrder');
+        const urlOrderId = searchParams.get('orderId');
+        // Primary key, then backup keyed by merchantOrderId, then fall back to URL param
+        const pending =
+            localStorage.getItem('pendingOrder') ||
+            (urlOrderId ? localStorage.getItem(`pendingOrder_${urlOrderId}`) : null);
         const pendingData = pending ? JSON.parse(pending) : null;
-        // Status API takes merchantOrderId, not PhonePe's internal orderId
-        const merchantOrderId = pendingData?.merchantOrderId || searchParams.get('orderId');
+        const merchantOrderId = pendingData?.merchantOrderId || urlOrderId;
 
         if (!merchantOrderId) {
             setErrorMsg('No pending payment found. If you paid, contact support.');
@@ -33,7 +47,7 @@ export default function PaymentResultPage() {
             return;
         }
 
-        async function finaliseOrder(orderData: Record<string, unknown>) {
+        async function finaliseOrder(orderData: Record<string, unknown>, paymentToken: string) {
             let tokenNumberValue: number;
             if (orderData.orderType === 'dine-in' && orderData.tableNumber) {
                 tokenNumberValue = parseInt(orderData.tableNumber as string);
@@ -41,19 +55,38 @@ export default function PaymentResultPage() {
                 tokenNumberValue = await getUniqueToken();
             }
             const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
-            orderData.orderId = `#${tokenNumberValue}-RDA-${randomSuffix}`;
+            const orderId = `#${tokenNumberValue}-RDA-${randomSuffix}`;
+            orderData.orderId = orderId;
             orderData.tokenNumber = tokenNumberValue;
             orderData.status = 'preparing';
             orderData.estimatedTime = 15;
+            if (orderData.orderType === 'preorder') {
+                const pd = orderData.preorderDetails as { customerPhone?: string; customerName?: string } | null;
+                if (pd?.customerPhone) orderData.customerPhone = pd.customerPhone;
+                if (pd?.customerName) orderData.customerName = pd.customerName;
+            }
+            // POST directly with the server-issued paymentToken — required by /api/db
+            const res = await fetch('/api/db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'order_add', order: orderData, paymentToken }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || 'Failed to place order');
+            }
+            // Update local context state so kitchen/admin pages reflect new order
             addOrder(orderData as Parameters<typeof addOrder>[0]);
-            sessionStorage.setItem('lastOrder', JSON.stringify(orderData));
-            sessionStorage.removeItem('pendingOrder');
+            localStorage.setItem('lastOrder', JSON.stringify(orderData));
+            localStorage.removeItem('pendingOrder');
+            if (pendingData?.merchantOrderId) localStorage.removeItem(`pendingOrder_${pendingData.merchantOrderId}`);
             clearCart();
+            playOrderPlaced();
+            setFinalOrderId(orderId);
             setPayState('success');
         }
 
         async function checkStatus(attempt = 0): Promise<void> {
-            console.log('[payment-result] checking status attempt', attempt, 'merchantOrderId:', merchantOrderId);
             const res = await fetch(`/api/phonepe/status?orderId=${encodeURIComponent(merchantOrderId)}`);
             const data = await res.json();
             console.log('[payment-result] status response:', data);
@@ -65,7 +98,18 @@ export default function PaymentResultPage() {
             }
 
             if (data.state === 'COMPLETED') {
-                await finaliseOrder(pendingData);
+                if (!pendingData) {
+                    setErrorMsg('Payment succeeded but order data was lost. Please contact support with order ID: ' + merchantOrderId);
+                    setPayState('failed');
+                    return;
+                }
+                try {
+                    await finaliseOrder(pendingData, data.paymentToken);
+                } catch (err: unknown) {
+                    setErrorMsg((err instanceof Error ? err.message : 'Order placement failed') + ' — payment ref: ' + merchantOrderId);
+                    setPayState('failed');
+                }
+                return;
             } else if (data.state === 'FAILED') {
                 setPayState('failed');
                 setErrorMsg('Payment was declined. Please try again.');
@@ -91,7 +135,7 @@ export default function PaymentResultPage() {
             <LeafLoader
                 isVisible
                 variant="success"
-                onComplete={() => router.replace('/order-confirmed')}
+                onComplete={() => router.replace(finalOrderId ? `/track-order?id=${encodeURIComponent(finalOrderId)}` : '/track-order')}
             />
         );
     }

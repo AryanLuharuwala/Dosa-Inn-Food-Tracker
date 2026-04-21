@@ -1243,3 +1243,286 @@
     color: var(--color-text-muted);
     font-style: italic;
 }
+/* Menu sub-tabs */
+.menuSubTabs {
+    display: flex;
+    gap: 4px;
+    margin-top: 10px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+    padding-bottom: 0;
+}
+
+.menuSubTab {
+    padding: 7px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: -1px;
+}
+
+.menuSubTab:hover {
+    color: var(--color-primary);
+}
+
+.menuSubTabActive {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+}
+
+/* Category group in items list */
+.categoryGroup {
+    margin-bottom: 4px;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.06);
+    background: var(--color-bg-card);
+}
+
+.categoryGroupHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(26,77,46,0.04);
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.categoryGroupHeader:hover {
+    background: rgba(26,77,46,0.08);
+}
+
+.categoryGroupIcon {
+    font-size: 1.1rem;
+}
+
+.categoryGroupName {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.categoryGroupCount {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    background: rgba(0,0,0,0.06);
+    padding: 1px 7px;
+    border-radius: 20px;
+}
+
+/* Category management rows */
+.catManageRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--color-bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(0,0,0,0.06);
+    margin-bottom: 6px;
+}
+
+.catManageIcon {
+    font-size: 1.6rem;
+    flex-shrink: 0;
+}
+
+.catManageInfo {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.catManageName {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.catManageTagline {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.catManageCount {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+}
+
+/* ── WhatsApp Tab ─────────────────────────────────────────────────────────── */
+
+.badgeGreen {
+    color: #22c55e;
+    font-size: 10px;
+    margin-left: 2px;
+}
+
+.waTab {
+    padding: 20px 16px 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.waHeader h2 {
+    margin-bottom: 4px;
+}
+
+.waStatusCard {
+    background: white;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.waStatusRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.waStatusDot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.waDot_ready      { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
+.waDot_qr         { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.2); }
+.waDot_connecting { background: #f59e0b; animation: waPulse 1s infinite; }
+.waDot_disconnected { background: #d1d5db; }
+
+@keyframes waPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.waStatusLabel {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.waConnectBtn {
+    padding: 8px 16px;
+    background: #25D366;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.waLogoutBtn {
+    padding: 8px 16px;
+    background: transparent;
+    color: #ef4444;
+    border: 1.5px solid #ef4444;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.waQrCard {
+    background: white;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+}
+
+.waQrInstructions {
+    font-size: 0.875rem;
+    color: #555;
+    max-width: 280px;
+    line-height: 1.5;
+}
+
+.waQrImage {
+    width: 240px;
+    height: 240px;
+    border-radius: 8px;
+    border: 1.5px solid #e5e7eb;
+}
+
+.waQrHint {
+    font-size: 0.75rem;
+    color: #aaa;
+}
+
+.waReadyInfo {
+    background: #f0fdf4;
+    border: 1.5px solid #86efac;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.waInstructions {
+    background: #f8f9fa;
+    border-radius: 14px;
+    padding: 18px;
+    font-size: 0.875rem;
+    color: #555;
+}
+
+.waInstructions h3 {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.waInstructions ol {
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    line-height: 1.5;
+}
+
+.waInstructions code {
+    background: #e8e8e8;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    word-break: break-all;
+}

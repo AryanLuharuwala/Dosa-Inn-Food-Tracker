@@ -1,0 +1,84 @@
+
+up to date, audited 411 packages in 4s
+
+156 packages are looking for funding
+  run `npm fund` for details
+
+6 vulnerabilities (2 moderate, 4 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+up to date, audited 284 packages in 1s
+
+28 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+
+> rocky-da-adda@0.1.0 build
+> next build
+
+⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /home/boom/startup/Project/package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * /home/boom/startup/Project/Dosa-Inn-Food-Tracker/package-lock.json
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env.local
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.7s
+  Running TypeScript ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/29) ...
+  Generating static pages using 11 workers (7/29) 
+  Generating static pages using 11 workers (14/29) 
+  Generating static pages using 11 workers (21/29) 
+✓ Generating static pages using 11 workers (29/29) in 368.6ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /admin
+├ ○ /admin/analytics
+├ ○ /admin/pricing
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/db
+├ ƒ /api/events
+├ ƒ /api/livekit/token
+├ ƒ /api/phonepe/initiate
+├ ƒ /api/phonepe/status
+├ ƒ /api/shared-cart
+├ ƒ /api/upload
+├ ƒ /api/whatsapp
+├ ƒ /auth/callback
+├ ○ /cart
+├ ○ /checkout
+├ ○ /cook
+├ ○ /kitchen
+├ ○ /login
+├ ○ /menu
+├ ○ /order-confirmed
+├ ○ /payment-result
+├ ○ /preorder
+├ ○ /table
+├ ○ /track-order
+└ ○ /unauthorized
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

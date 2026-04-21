@@ -278,4 +278,6 @@ export interface Order {
     status: 'pending' | 'preparing' | 'ready' | 'delivered';
     tokenId?: string;
     phonePeOrderId?: string;
+    customerPhone?: string;  // for WhatsApp notifications (dine-in)
+    customerName?: string;
 }

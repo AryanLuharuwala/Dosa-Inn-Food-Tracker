@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { issuePaymentToken } from '@/lib/paymentTokens';
+import { rateLimited, getClientIp, getVisitorId } from '@/lib/apiAuth';
 
 const IS_SANDBOX = process.env.PHONEPE_ENV !== 'production';
 
@@ -31,10 +33,24 @@ async function getAccessToken(): Promise<string> {
 }
 
 export async function GET(req: NextRequest) {
+    const ip = getClientIp(req);
+
+    // Rate limit: 20 status checks per IP per minute
+    if (rateLimited(`phonepe-status:${ip}`, 20, 60_000)) {
+        return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
     const orderId = req.nextUrl.searchParams.get('orderId');
     if (!orderId) {
         return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
     }
+
+    // Validate format — our IDs always look like TMP-<timestamp>-<random>
+    if (!/^TMP-\d+-[A-Z0-9]+$/.test(orderId)) {
+        return NextResponse.json({ error: 'Invalid orderId' }, { status: 400 });
+    }
+
+    const visitorId = getVisitorId(req) ?? ip;
 
     try {
         const accessToken = await getAccessToken();
@@ -50,12 +66,20 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: data }, { status: res.status });
         }
 
-        // state: COMPLETED | FAILED | PENDING | EXPIRED
+        // On COMPLETED: issue a server-side single-use payment token tied to the
+        // verified amount. The client must present this token when calling order_add.
+        // Without it, order_add is rejected — this closes the free-order attack.
+        let paymentToken: string | undefined;
+        if (data.state === 'COMPLETED') {
+            const amountRupees = (data.amount as number) / 100;
+            paymentToken = issuePaymentToken({ merchantOrderId: orderId, amountRupees, visitorId });
+        }
+
         return NextResponse.json({
             state: data.state,
             orderId: data.orderId,
             amount: data.amount,
-            paymentDetails: data.paymentDetails ?? null,
+            paymentToken, // only present on COMPLETED
         });
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Unknown error';

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { MenuItem, AddOn, Extra } from '@/lib/menuData';
 import { useCart } from '@/lib/cartContext';
+import { useSound } from '@/lib/useSound';
 import styles from './ItemSheet.module.css';
 
 interface ItemSheetProps {
@@ -13,6 +14,7 @@ interface ItemSheetProps {
 
 export default function ItemSheet({ item, isOpen, onClose }: ItemSheetProps) {
     const { addItem, addExtra } = useCart();
+    const playAddToCart = useSound('/sounds/add-to-cart.mp3', 0.5);
     const [quantity, setQuantity] = useState(1);
     const [selectedAddOns, setSelectedAddOns] = useState<AddOn[]>([]);
     const [selectedExtras, setSelectedExtras] = useState<Extra[]>([]);
@@ -47,8 +49,8 @@ export default function ItemSheet({ item, isOpen, onClose }: ItemSheetProps) {
     const handleAddToCart = () => {
         addItem(item, quantity, selectedAddOns);
         selectedExtras.forEach(extra => addExtra(extra));
+        playAddToCart();
 
-        // Reset state
         setQuantity(1);
         setSelectedAddOns([]);
         setSelectedExtras([]);
