@@ -49,8 +49,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'merchantOrderId and amount are required' }, { status: 400 });
         }
 
-        // Always derive from the incoming request so it works on any device/IP
-        const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+        // Prefer explicit config; fall back to X-Forwarded-* (Azure reverse proxy);
+        // last resort is the request URL (which inside a container is the pod hostname)
+        const forwardedHost = req.headers.get('x-forwarded-host');
+        const forwardedProto = req.headers.get('x-forwarded-proto');
+        const baseUrl =
+            process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') ||
+            (forwardedHost ? `${forwardedProto ?? 'https'}://${forwardedHost}` : null) ||
+            `${req.nextUrl.protocol}//${req.nextUrl.host}`;
         const accessToken = await getAccessToken();
 
         const payload = {
