@@ -5,27 +5,16 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import LeafLoader from '@/components/LeafLoader';
 import { useCart } from '@/lib/cartContext';
-import { useMenu } from '@/lib/menuContext';
-import { getUniqueToken } from '@/lib/tokens';
+import { ensureSession } from '@/lib/auth';
 import styles from './page.module.css';
-
-const UPI_APPS = [
-    { id: 'gpay', name: 'Google Pay', color: '#4285F4' },
-    { id: 'phonepe', name: 'PhonePe', color: '#5F259F' },
-    { id: 'paytm', name: 'Paytm', color: '#00BAF2' },
-    { id: 'bhim', name: 'BHIM UPI', color: '#00A651' },
-];
 
 export default function CheckoutPage() {
     const router = useRouter();
-    const { items, extras, tableNumber, orderType, preorderDetails, totalAmount, clearCart } = useCart();
-    const { addOrder } = useMenu();
-    const [selectedApp, setSelectedApp] = useState<string | null>(null);
+    const { items, extras, tableNumber, orderType, preorderDetails, totalAmount } = useCart();
     const [isProcessing, setIsProcessing] = useState(false);
-    const [showSuccess, setShowSuccess] = useState(false);
+    const [error, setError] = useState('');
     const orderCompleted = useRef(false);
 
-    // Redirect if cart is empty (but not after successful order placement)
     useEffect(() => {
         if (orderCompleted.current) return;
         if (items.length === 0 && extras.length === 0) {
@@ -33,82 +22,74 @@ export default function CheckoutPage() {
         }
     }, [items, extras, router]);
 
-    const handlePayment = async (appId: string) => {
-        setSelectedApp(appId);
+    const handlePhonePePayment = async () => {
+        setError('');
         setIsProcessing(true);
 
-        // Simulate payment processing
-        setTimeout(() => {
-            setIsProcessing(false);
-            setShowSuccess(true);
-        }, 2000);
-    };
+        try {
+            const tokenId = await ensureSession();
 
-    const handleSuccessComplete = async () => {
-        // Get token number: 
-        // For dine-in, use the one assigned at the start. 
-        // For preorder, generate a unique one now.
-        let tokenNumberValue: number;
-        if (orderType === 'dine-in' && tableNumber) {
-            tokenNumberValue = parseInt(tableNumber);
-        } else {
-            tokenNumberValue = await getUniqueToken();
-        }
+            // Build a temporary merchant order ID (final order ID assigned after payment success)
+            const tempOrderId = `TMP-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
-        // Generate order ID (Connected to Token Number)
-        const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
-        const orderId = `#${tokenNumberValue}-RDA-${randomSuffix}`;
-
-        // Get authenticated session ID
-        const { ensureSession } = await import('@/lib/auth');
-        const tokenId = await ensureSession();
-
-        // Prepare order data for admin
-        const orderData = {
-            orderId,
-            orderType,
-            tableNumber: orderType === 'dine-in' ? (tableNumber || '0') : null,
-            preorderDetails: orderType === 'preorder' ? preorderDetails : null,
-            tokenNumber: tokenNumberValue,
-            items: items.map(item => ({
-                menuItem: {
-                    id: item.menuItem.id,
-                    name: item.menuItem.name,
-                    price: item.menuItem.price,
-                },
-                quantity: item.quantity,
-                selectedAddOns: item.selectedAddOns.map(a => ({
-                    id: a.id,
-                    name: a.name,
-                    price: a.price,
+            // Stash order data so payment-result page can finalise the order
+            const pendingOrder = {
+                orderType,
+                tableNumber: orderType === 'dine-in' ? (tableNumber || '0') : null,
+                preorderDetails: orderType === 'preorder' ? preorderDetails : null,
+                items: items.map(item => ({
+                    menuItem: {
+                        id: item.menuItem.id,
+                        name: item.menuItem.name,
+                        price: item.menuItem.price,
+                    },
+                    quantity: item.quantity,
+                    selectedAddOns: item.selectedAddOns.map(a => ({
+                        id: a.id,
+                        name: a.name,
+                        price: a.price,
+                    })),
+                    totalPrice: item.totalPrice,
                 })),
-                totalPrice: item.totalPrice,
-            })),
-            extras: extras.map(e => ({
-                extra: {
-                    id: e.extra.id,
-                    name: e.extra.name,
-                    price: e.extra.price,
-                },
-                quantity: e.quantity,
-            })),
-            totalAmount,
-            timestamp: new Date().toISOString(),
-            status: 'preparing',
-            estimatedTime: 15, // Default 15 minutes
-            tokenId: tokenId || '',
-        };
+                extras: extras.map(e => ({
+                    extra: {
+                        id: e.extra.id,
+                        name: e.extra.name,
+                        price: e.extra.price,
+                    },
+                    quantity: e.quantity,
+                })),
+                totalAmount,
+                timestamp: new Date().toISOString(),
+                tokenId: tokenId || '',
+            };
+            sessionStorage.setItem('pendingOrder', JSON.stringify(pendingOrder));
 
-        // Add order to shared context (visible in admin)
-        addOrder(orderData);
+            const res = await fetch('/api/phonepe/initiate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ merchantOrderId: tempOrderId, amount: totalAmount }),
+            });
 
-        // Save to sessionStorage for order confirmation page
-        sessionStorage.setItem('lastOrder', JSON.stringify(orderData));
+            const data = await res.json();
 
-        // Mark order as completed to prevent empty-cart redirect from firing
-        orderCompleted.current = true;
-        clearCart();
-        router.push('/order-confirmed');
+            if (!res.ok || data.error) {
+                throw new Error(typeof data.error === 'string' ? data.error : 'Failed to initiate payment');
+            }
+
+            // Store both IDs: merchantOrderId for status check, phonePeOrderId for reference
+            const stored = JSON.parse(sessionStorage.getItem('pendingOrder') || '{}');
+            stored.merchantOrderId = tempOrderId;
+            stored.phonePeOrderId = data.phonePeOrderId;
+            sessionStorage.setItem('pendingOrder', JSON.stringify(stored));
+
+            orderCompleted.current = true;
+            window.location.href = data.redirectUrl;
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Something went wrong';
+            setError(message);
+            setIsProcessing(false);
+        }
     };
 
     const totalItemsCount = items.reduce((sum, i) => sum + i.quantity, 0) +
@@ -116,15 +97,7 @@ export default function CheckoutPage() {
 
     return (
         <>
-            <LeafLoader
-                isVisible={isProcessing}
-                variant="payment"
-            />
-            <LeafLoader
-                isVisible={showSuccess}
-                variant="success"
-                onComplete={handleSuccessComplete}
-            />
+            <LeafLoader isVisible={isProcessing} variant="payment" />
 
             <div className={styles.container}>
                 <Header
@@ -163,7 +136,6 @@ export default function CheckoutPage() {
                             </div>
                             <div className={styles.divider} />
 
-                            {/* Order Items Preview */}
                             <div className={styles.orderPreview}>
                                 {items.slice(0, 3).map((item, i) => (
                                     <div key={i} className={styles.previewItem}>
@@ -187,28 +159,32 @@ export default function CheckoutPage() {
                         </div>
                     </div>
 
-                    {/* Payment Methods */}
+                    {/* PhonePe Payment */}
                     <div className={styles.section}>
-                        <h2 className={styles.sectionTitle}>Pay using UPI</h2>
-                        <p className={styles.sectionSubtitle}>Select an app to complete payment</p>
-                        <div className={styles.upiGrid}>
-                            {UPI_APPS.map(app => (
-                                <button
-                                    key={app.id}
-                                    className={`${styles.upiBtn} ${selectedApp === app.id ? styles.selected : ''}`}
-                                    onClick={() => handlePayment(app.id)}
-                                    style={{ '--app-color': app.color } as React.CSSProperties}
-                                >
-                                    <div className={styles.upiIcon} style={{ backgroundColor: app.color }}>
-                                        {app.id === 'gpay' && 'G'}
-                                        {app.id === 'phonepe' && 'P'}
-                                        {app.id === 'paytm' && '₽'}
-                                        {app.id === 'bhim' && 'B'}
-                                    </div>
-                                    <span className={styles.upiName}>{app.name}</span>
-                                </button>
-                            ))}
-                        </div>
+                        <h2 className={styles.sectionTitle}>Pay Securely</h2>
+                        <p className={styles.sectionSubtitle}>You'll be redirected to PhonePe to complete payment via UPI, cards, or net banking.</p>
+
+                        {error && (
+                            <div className={styles.errorBox}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
+                                </svg>
+                                {error}
+                            </div>
+                        )}
+
+                        <button
+                            className={styles.phonePeBtn}
+                            onClick={handlePhonePePayment}
+                            disabled={isProcessing}
+                        >
+                            <span className={styles.phonePeLogo}>Pe</span>
+                            <span>Pay ₹{totalAmount} with PhonePe</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </button>
                     </div>
 
                     {/* Security Info */}
@@ -219,7 +195,7 @@ export default function CheckoutPage() {
                         </svg>
                         <div>
                             <p className={styles.infoTitle}>Secure Payment</p>
-                            <p className={styles.infoText}>You'll be redirected to your UPI app to complete the payment securely.</p>
+                            <p className={styles.infoText}>Powered by PhonePe — supports UPI, credit/debit cards, and net banking. 256-bit encrypted.</p>
                         </div>
                     </div>
                 </div>

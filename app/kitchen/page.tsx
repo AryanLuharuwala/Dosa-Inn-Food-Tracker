@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabaseClient';
 import { useMenu } from '@/lib/menuContext';
 import KitchenAnnouncer from '@/components/KitchenAnnouncer';
 import VoiceAssistant from '@/components/VoiceAssistant';
@@ -243,22 +242,20 @@ export default function KitchenPage() {
     // ===== Data Loading (Kitchen specific settings) =====
 
     const loadData = useCallback(async () => {
-        if (!supabase) return;
-
-        const [chefsRes, catsRes, assignRes, menuRes] = await Promise.all([
-            supabase.from('chefs').select('*').order('created_at'),
-            supabase.from('categories').select('id, name, icon').order('sort_order'),
-            supabase.from('chef_categories').select('*'),
-            supabase.from('menu_items').select('id, category_id'),
+        const [chefsData, catsData, assignData, menuData] = await Promise.all([
+            fetch('/api/db?resource=chefs').then(r => r.json()).catch(() => []),
+            fetch('/api/db?resource=categories').then(r => r.json()).catch(() => []),
+            fetch('/api/db?resource=chef_categories').then(r => r.json()).catch(() => []),
+            fetch('/api/db?resource=menu_items').then(r => r.json()).catch(() => []),
         ]);
 
-        if (chefsRes.data) setChefs(chefsRes.data);
-        if (catsRes.data) setCategories(catsRes.data);
-        if (assignRes.data) setAssignments(assignRes.data);
-        if (menuRes.data) {
+        if (chefsData?.length) setChefs(chefsData);
+        if (catsData?.length) setCategories(catsData);
+        if (assignData) setAssignments(assignData);
+        if (menuData?.length) {
             const map: Record<string, string> = {};
-            menuRes.data.forEach((item: { id: string; category_id: string }) => {
-                map[item.id] = item.category_id;
+            menuData.forEach((item: { id: string; categoryId: string }) => {
+                map[item.id] = item.categoryId;
             });
             setMenuItemCategories(map);
         }
@@ -266,20 +263,8 @@ export default function KitchenPage() {
 
     useEffect(() => {
         loadData();
-    }, [loadData]);
-
-    // Realtime subscriptions for Kitchen settings only
-    // Orders are handled by MenuContext
-    useEffect(() => {
-        if (!supabase) return;
-
-        const channel = supabase
-            .channel('kitchen-settings-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'chefs' }, () => loadData())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'chef_categories' }, () => loadData())
-            .subscribe();
-
-        return () => { supabase!.removeChannel(channel); };
+        const interval = setInterval(loadData, 3000);
+        return () => clearInterval(interval);
     }, [loadData]);
 
     // ===== Computed: Orders grouped by chef =====
@@ -326,21 +311,26 @@ export default function KitchenPage() {
     // ===== Chef CRUD =====
 
     const handleSaveChef = async (name: string, color: string) => {
-        if (!supabase) return;
+        const chef = editingChef
+            ? { ...editingChef, name, color }
+            : { id: `chef-${Date.now()}`, name, color, is_active: true };
 
-        if (editingChef) {
-            await supabase.from('chefs').update({ name, color }).eq('id', editingChef.id);
-        } else {
-            await supabase.from('chefs').insert({ name, color });
-        }
+        await fetch('/api/db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'chef_upsert', chef }),
+        });
         setShowChefModal(false);
         setEditingChef(null);
         loadData();
     };
 
     const handleDeleteChef = async (chefId: string) => {
-        if (!supabase) return;
-        await supabase.from('chefs').delete().eq('id', chefId);
+        await fetch('/api/db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'chef_delete', id: chefId }),
+        });
         setDeleteConfirm(null);
         loadData();
     };
@@ -348,25 +338,12 @@ export default function KitchenPage() {
     // ===== Category Assignment =====
 
     const handleSaveAssignments = async (categoryIds: string[]) => {
-        if (!supabase || !assigningChef) return;
-
-        // Remove old assignments for this chef
-        await supabase.from('chef_categories').delete().eq('chef_id', assigningChef.id);
-
-        // Remove these categories from other chefs (each category → one chef only)
-        if (categoryIds.length > 0) {
-            await supabase.from('chef_categories').delete().in('category_id', categoryIds);
-        }
-
-        // Insert new assignments
-        if (categoryIds.length > 0) {
-            const rows = categoryIds.map(catId => ({
-                chef_id: assigningChef.id,
-                category_id: catId
-            }));
-            await supabase.from('chef_categories').insert(rows);
-        }
-
+        if (!assigningChef) return;
+        await fetch('/api/db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'chef_categories_set', chef_id: assigningChef.id, category_ids: categoryIds }),
+        });
         setAssigningChef(null);
         loadData();
     };
@@ -374,27 +351,23 @@ export default function KitchenPage() {
     // ===== Item Tick-off =====
 
     const handleTickItem = async (orderId: string, itemIndex: number) => {
-        if (!supabase) return;
-
         const order = orders.find(o => o.order_id === orderId);
         if (!order) return;
 
-        // Mark item as ready by updating the items JSONB
         const updatedItems = [...order.items];
-        const item = updatedItems[itemIndex];
-        // Add a 'ready' flag to the item
-        (item as OrderItem & { ready?: boolean }).ready = true;
+        (updatedItems[itemIndex] as OrderItem & { ready?: boolean }).ready = true;
+        const allReady = updatedItems.every((i) => (i as OrderItem & { ready?: boolean }).ready === true);
 
-        // Check if all items in the order are ready
-        const allReady = updatedItems.every(
-            (i) => (i as OrderItem & { ready?: boolean }).ready === true
-        );
-
-        await supabase.from('orders').update({
-            items: updatedItems,
-            status: allReady ? 'delivered' : 'preparing'
-        }).eq('order_id', orderId);
-
+        await fetch('/api/db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'order_status',
+                orderId,
+                status: allReady ? 'delivered' : 'preparing',
+                items: updatedItems,
+            }),
+        });
         loadData();
     };
 

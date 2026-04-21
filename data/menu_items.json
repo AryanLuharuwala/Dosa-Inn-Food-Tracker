@@ -1,0 +1,1708 @@
+[
+  {
+    "id": "aloo-paratha",
+    "name": "Classic Aloo Paratha",
+    "description": "A soft wheat paratha generously stuffed with spiced mashed potatoes, pan-roasted till crisp outside and fluffy inside. Old reliable. Like that one friend who always shows up.",
+    "price": 1,
+    "categoryId": "parathas",
+    "tags": [
+      "bestSeller"
+    ],
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/aloo-paratha.png"
+  },
+  {
+    "id": "onion-paratha",
+    "name": "Onion Paratha",
+    "description": "Finely chopped onions mixed with mild spices, folded into a paratha that's lightly crisp and naturally sweet. Your only pyaas ka punchnama….",
+    "price": 60,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/onion-paratha.png"
+  },
+  {
+    "id": "methi-paratha",
+    "name": "Methi Paratha",
+    "description": "Fresh methi leaves in soft paratha dough. Low-key healthy, high-key tasty. Kem chho? Your taste buds will be majama.",
+    "price": 70,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/methi-paratha.png"
+  },
+  {
+    "id": "paneer-paratha",
+    "name": "Paneer Paratha",
+    "description": "Fresh paneer crumbled with spices and herbs, stuffed into a thick paratha and cooked slow for a rich bite. For when your hunger can't dance but your appetite sala... definitely can.",
+    "price": 80,
+    "categoryId": "parathas",
+    "tags": [
+      "bestSeller"
+    ],
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/paneer-paratha.png"
+  },
+  {
+    "id": "sattu-paratha",
+    "name": "Sattu Paratha",
+    "description": "Roasted gram flour filling seasoned with mustard oil and spices. Protein-loaded and serious business. Gym bros approved.",
+    "price": 70,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/sattu-paratha.png"
+  },
+  {
+    "id": "ratlami-sev-paratha",
+    "name": "Ratlami Sev Paratha",
+    "description": "Crunchy ratlami sev layered inside a hot paratha, adding texture and a bold Indori kick.",
+    "price": 70,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/ratlami-sev-paratha.png"
+  },
+  {
+    "id": "cheese-aloo-paratha",
+    "name": "Cheese Aloo Paratha",
+    "description": "Classic aloo filling combined with melted cheese, creamy and indulgent. \"Kho jaane de\" your diet plans. This combo is pure gehraayiaan you won't regret.",
+    "price": 80,
+    "categoryId": "parathas",
+    "tags": [
+      "bestSeller"
+    ],
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/cheese-paratha.png"
+  },
+  {
+    "id": "cheese-onion-paratha",
+    "name": "Cheese Onion Paratha",
+    "description": "Sweet onions and gooey cheese sealed inside a crisp paratha, mildly spiced and satisfying. Your heart will definitely sing kyuki tumse milke mujhe accha laga hai senoritaaaaaaaaaa",
+    "price": 70,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/cheese-paratha.png"
+  },
+  {
+    "id": "cheese-paneer-paratha",
+    "name": "Cheese Paneer Paratha",
+    "description": "A rich stuffing of paneer and cheese blended together for a heavy, filling paratha. Parathe mai cheese ho toh zinda ho tum!",
+    "price": 110,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/cheese-paratha.png"
+  },
+  {
+    "id": "mix-veg-paratha",
+    "name": "Mix Veg Paratha",
+    "description": "Seasonal vegetables are finely chopped and spiced for a balanced, wholesome paratha. Because balance in life matters (sometimes)..",
+    "price": 100,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/mix-veg-paratha.png"
+  },
+  {
+    "id": "pizza-paratha",
+    "name": "Pizza Paratha",
+    "description": "A fusion paratha filled with cheese, herbs, and tangy flavours inspired by pizza. Not Italian. Not desi. Just the kind of bad decision you'll want to make twice.",
+    "price": 110,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/pizza-paratha.png"
+  },
+  {
+    "id": "shahi-plain-paratha",
+    "name": "Shahi Plain Paratha",
+    "description": "A simple, flaky paratha is the perfect base for any curry or combo. The dependable base layer. Goes with everything, like \"All izz well\" in life.",
+    "price": 20,
+    "categoryId": "parathas",
+    "addOns": [
+      {
+        "id": "butter",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "curd",
+        "name": "Curd",
+        "price": 10
+      },
+      {
+        "id": "achar",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "ghee",
+        "name": "Ghee",
+        "price": 15
+      }
+    ],
+    "extras": [
+      {
+        "id": "dhaniya-chutney",
+        "name": "Dhaniya Chutney",
+        "price": 10
+      },
+      {
+        "id": "schezwan-chutney",
+        "name": "Schezwan Chutney",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/plain-paratha.png"
+  },
+  {
+    "id": "plain-pav-bhaji",
+    "name": "Classic Buttered Pav Bhaji",
+    "description": "Smooth, buttery, and full of dil — the Munna Bhai of comfort food. No violence, only love and extra butter. Bole toh, pure feelings.",
+    "price": 60,
+    "categoryId": "pav-bhaji",
+    "tags": [
+      "bestSeller"
+    ],
+    "addOns": [
+      {
+        "id": "cheese-pav",
+        "name": "Cheese",
+        "price": 25
+      },
+      {
+        "id": "butter-pav",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "extra-pav",
+        "name": "Pav",
+        "price": 10
+      },
+      {
+        "id": "butter-pav-full",
+        "name": "Butter Pav",
+        "price": 20
+      },
+      {
+        "id": "masala-pav",
+        "name": "Masala Pav",
+        "price": 20
+      },
+      {
+        "id": "plain-pav-full",
+        "name": "Plain Pav",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/pav-bhaji.png"
+  },
+  {
+    "id": "mumbai-pav-bhaji",
+    "name": "Mumbai Express Pav Bhaji",
+    "description": "Bold, spicy, and full of tapori swag — this pav bhaji doesn't ask \"kya hai?\", it tells you \"yeh hai Mumbai ka asli jadoo ki jhappi.\" Bole toh ekkdum jhakaas",
+    "price": 80,
+    "categoryId": "pav-bhaji",
+    "addOns": [
+      {
+        "id": "cheese-pav",
+        "name": "Cheese",
+        "price": 25
+      },
+      {
+        "id": "butter-pav",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "extra-pav",
+        "name": "Pav",
+        "price": 10
+      },
+      {
+        "id": "butter-pav-full",
+        "name": "Butter Pav",
+        "price": 20
+      },
+      {
+        "id": "masala-pav",
+        "name": "Masala Pav",
+        "price": 20
+      },
+      {
+        "id": "plain-pav-full",
+        "name": "Plain Pav",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/mumbai-pav-bhaji.png"
+  },
+  {
+    "id": "ratlami-sev-pav-bhaji",
+    "name": "Ratlami Sev Pav Bhaji",
+    "description": "Traditional pav bhaji topped with crunchy ratlami sev for an added Indori twist. When Mumbai and Indore swipe right on each other.",
+    "price": 110,
+    "categoryId": "pav-bhaji",
+    "addOns": [
+      {
+        "id": "cheese-pav",
+        "name": "Cheese",
+        "price": 25
+      },
+      {
+        "id": "butter-pav",
+        "name": "Butter",
+        "price": 10
+      },
+      {
+        "id": "extra-pav",
+        "name": "Pav",
+        "price": 10
+      },
+      {
+        "id": "butter-pav-full",
+        "name": "Butter Pav",
+        "price": 20
+      },
+      {
+        "id": "masala-pav",
+        "name": "Masala Pav",
+        "price": 20
+      },
+      {
+        "id": "plain-pav-full",
+        "name": "Plain Pav",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/ratlami-sev-pav-bhaji.png"
+  },
+  {
+    "id": "rajma-chawal",
+    "name": "Rajma Chawal",
+    "description": "Slow-cooked kidney beans in a mildly spiced gravy served with steamed rice. Feels like home. Tastes better than mess.",
+    "price": 90,
+    "categoryId": "combos",
+    "tags": [
+      "bestSeller"
+    ],
+    "addOns": [
+      {
+        "id": "basmati-rice",
+        "name": "Basmati Steamed Rice",
+        "price": 25
+      },
+      {
+        "id": "jeera-basmati",
+        "name": "Jeera Fry Basmati Rice",
+        "price": 30
+      },
+      {
+        "id": "ghee-combo",
+        "name": "Ghee",
+        "price": 15
+      },
+      {
+        "id": "raita",
+        "name": "Raita",
+        "price": 10
+      },
+      {
+        "id": "achar-combo",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "kulche",
+        "name": "Kulche",
+        "price": 15
+      },
+      {
+        "id": "combo-nimbu-paani",
+        "name": "Nimbu Paani",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-chaas",
+        "name": "Masala Chaas",
+        "price": 30
+      },
+      {
+        "id": "combo-cutting-chai",
+        "name": "Cutting Chai",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-coldrink",
+        "name": "Masala Coldrink",
+        "price": 30
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/rajma-chawal.png"
+  },
+  {
+    "id": "chole-chawal",
+    "name": "Chole Chawal",
+    "description": "Punjabi-style chickpea curry paired with plain rice for a filling, no-nonsense meal. Heavy, hearty, and perfect for skipping the next lecture.",
+    "price": 90,
+    "categoryId": "combos",
+    "addOns": [
+      {
+        "id": "basmati-rice",
+        "name": "Basmati Steamed Rice",
+        "price": 25
+      },
+      {
+        "id": "jeera-basmati",
+        "name": "Jeera Fry Basmati Rice",
+        "price": 30
+      },
+      {
+        "id": "ghee-combo",
+        "name": "Ghee",
+        "price": 15
+      },
+      {
+        "id": "raita",
+        "name": "Raita",
+        "price": 10
+      },
+      {
+        "id": "achar-combo",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "kulche",
+        "name": "Kulche",
+        "price": 15
+      },
+      {
+        "id": "combo-nimbu-paani",
+        "name": "Nimbu Paani",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-chaas",
+        "name": "Masala Chaas",
+        "price": 30
+      },
+      {
+        "id": "combo-cutting-chai",
+        "name": "Cutting Chai",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-coldrink",
+        "name": "Masala Coldrink",
+        "price": 30
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/chole-chawal.png"
+  },
+  {
+    "id": "kadi-chawal",
+    "name": "Kadi Chawal",
+    "description": "Tangy yogurt-based curry thickened with besan, served with rice.",
+    "price": 70,
+    "categoryId": "combos",
+    "addOns": [
+      {
+        "id": "basmati-rice",
+        "name": "Basmati Steamed Rice",
+        "price": 25
+      },
+      {
+        "id": "jeera-basmati",
+        "name": "Jeera Fry Basmati Rice",
+        "price": 30
+      },
+      {
+        "id": "ghee-combo",
+        "name": "Ghee",
+        "price": 15
+      },
+      {
+        "id": "raita",
+        "name": "Raita",
+        "price": 10
+      },
+      {
+        "id": "achar-combo",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "kulche",
+        "name": "Kulche",
+        "price": 15
+      },
+      {
+        "id": "combo-nimbu-paani",
+        "name": "Nimbu Paani",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-chaas",
+        "name": "Masala Chaas",
+        "price": 30
+      },
+      {
+        "id": "combo-cutting-chai",
+        "name": "Cutting Chai",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-coldrink",
+        "name": "Masala Coldrink",
+        "price": 30
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/kadi-chawal.png"
+  },
+  {
+    "id": "chole-kulche",
+    "name": "Chole Kulche (2 pcs)",
+    "description": "Soft kulche served with flavourful chole, lightly spiced and satisfying.",
+    "price": 70,
+    "categoryId": "combos",
+    "addOns": [
+      {
+        "id": "basmati-rice",
+        "name": "Basmati Steamed Rice",
+        "price": 25
+      },
+      {
+        "id": "jeera-basmati",
+        "name": "Jeera Fry Basmati Rice",
+        "price": 30
+      },
+      {
+        "id": "ghee-combo",
+        "name": "Ghee",
+        "price": 15
+      },
+      {
+        "id": "raita",
+        "name": "Raita",
+        "price": 10
+      },
+      {
+        "id": "achar-combo",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "kulche",
+        "name": "Kulche",
+        "price": 15
+      },
+      {
+        "id": "combo-nimbu-paani",
+        "name": "Nimbu Paani",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-chaas",
+        "name": "Masala Chaas",
+        "price": 30
+      },
+      {
+        "id": "combo-cutting-chai",
+        "name": "Cutting Chai",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-coldrink",
+        "name": "Masala Coldrink",
+        "price": 30
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/chole-kulche.png"
+  },
+  {
+    "id": "paneer-bhurji-kulche",
+    "name": "Paneer Bhurji with Kulche",
+    "description": "Crumbled paneer cooked with onions and spices, served alongside soft kulche. Spicy paneer that means business.",
+    "price": 130,
+    "categoryId": "combos",
+    "addOns": [
+      {
+        "id": "basmati-rice",
+        "name": "Basmati Steamed Rice",
+        "price": 25
+      },
+      {
+        "id": "jeera-basmati",
+        "name": "Jeera Fry Basmati Rice",
+        "price": 30
+      },
+      {
+        "id": "ghee-combo",
+        "name": "Ghee",
+        "price": 15
+      },
+      {
+        "id": "raita",
+        "name": "Raita",
+        "price": 10
+      },
+      {
+        "id": "achar-combo",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "kulche",
+        "name": "Kulche",
+        "price": 15
+      },
+      {
+        "id": "combo-nimbu-paani",
+        "name": "Nimbu Paani",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-chaas",
+        "name": "Masala Chaas",
+        "price": 30
+      },
+      {
+        "id": "combo-cutting-chai",
+        "name": "Cutting Chai",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-coldrink",
+        "name": "Masala Coldrink",
+        "price": 30
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/paneer-bhurji.png"
+  },
+  {
+    "id": "dal-chawal-jeera-aloo",
+    "name": "Dal Chawal with Jeera Aloo",
+    "description": "Comfort dal and rice served with lightly spiced cumin potatoes. Aa gayi na ghar ki yaad?",
+    "price": 90,
+    "categoryId": "combos",
+    "addOns": [
+      {
+        "id": "basmati-rice",
+        "name": "Basmati Steamed Rice",
+        "price": 25
+      },
+      {
+        "id": "jeera-basmati",
+        "name": "Jeera Fry Basmati Rice",
+        "price": 30
+      },
+      {
+        "id": "ghee-combo",
+        "name": "Ghee",
+        "price": 15
+      },
+      {
+        "id": "raita",
+        "name": "Raita",
+        "price": 10
+      },
+      {
+        "id": "achar-combo",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "kulche",
+        "name": "Kulche",
+        "price": 15
+      },
+      {
+        "id": "combo-nimbu-paani",
+        "name": "Nimbu Paani",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-chaas",
+        "name": "Masala Chaas",
+        "price": 30
+      },
+      {
+        "id": "combo-cutting-chai",
+        "name": "Cutting Chai",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-coldrink",
+        "name": "Masala Coldrink",
+        "price": 30
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/dal-chawal.png"
+  },
+  {
+    "id": "plain-paratha-jeera-aloo",
+    "name": "Plain Paratha with Jeera Aloo",
+    "description": "Flaky paratha paired with mildly spiced jeera aloo.",
+    "price": 100,
+    "categoryId": "combos",
+    "addOns": [
+      {
+        "id": "basmati-rice",
+        "name": "Basmati Steamed Rice",
+        "price": 25
+      },
+      {
+        "id": "jeera-basmati",
+        "name": "Jeera Fry Basmati Rice",
+        "price": 30
+      },
+      {
+        "id": "ghee-combo",
+        "name": "Ghee",
+        "price": 15
+      },
+      {
+        "id": "raita",
+        "name": "Raita",
+        "price": 10
+      },
+      {
+        "id": "achar-combo",
+        "name": "Achar",
+        "price": 5
+      },
+      {
+        "id": "kulche",
+        "name": "Kulche",
+        "price": 15
+      },
+      {
+        "id": "combo-nimbu-paani",
+        "name": "Nimbu Paani",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-chaas",
+        "name": "Masala Chaas",
+        "price": 30
+      },
+      {
+        "id": "combo-cutting-chai",
+        "name": "Cutting Chai",
+        "price": 15
+      },
+      {
+        "id": "combo-masala-coldrink",
+        "name": "Masala Coldrink",
+        "price": 30
+      }
+    ],
+    "isAvailable": true
+  },
+  {
+    "id": "veg-fried-rice-chilli-paneer",
+    "name": "Veg Fried Rice with Chilli Paneer",
+    "description": "Wok-tossed vegetable fried rice served with spicy chilli paneer.",
+    "price": 200,
+    "categoryId": "combos",
+    "isAvailable": true
+  },
+  {
+    "id": "veg-fried-rice-manchurian",
+    "name": "Veg Fried Rice with Manchurian",
+    "description": "Classic fried rice served with vegetable manchurian in gravy.",
+    "price": 180,
+    "categoryId": "combos",
+    "isAvailable": true
+  },
+  {
+    "id": "veg-fried-rice-paneer-masala",
+    "name": "Veg Fried Rice with Paneer Masala",
+    "description": "Fried rice paired with a rich paneer-based curry.",
+    "price": 200,
+    "categoryId": "combos",
+    "isAvailable": true
+  },
+  {
+    "id": "schezwan-rice-mushroom-masala",
+    "name": "Schezwan Rice with Mushroom Masala",
+    "description": "Spicy schezwan rice served with mushroom gravy. Warning: mild sweat possible.",
+    "price": 200,
+    "categoryId": "combos",
+    "isAvailable": true
+  },
+  {
+    "id": "schezwan-rice-mushroom-manchurian",
+    "name": "Schezwan Rice with Mushroom Manchurian",
+    "description": "Fiery schezwan rice paired with crispy mushroom manchurian. For those who like life a little extra fiery.",
+    "price": 200,
+    "categoryId": "combos",
+    "isAvailable": true
+  },
+  {
+    "id": "fried-litti-chokha",
+    "name": "Fried Litti Chokha (3pc)",
+    "description": "Traditional Bihari litti served with smoky chokha.",
+    "price": 50,
+    "categoryId": "combos",
+    "isAvailable": true,
+    "image": "/menu-images/litti-chokha.png"
+  },
+  {
+    "id": "veg-manchurian",
+    "name": "Veg Manchurian",
+    "description": "Crispy vegetable balls tossed in a thick Indo-Chinese sauce. Crispy outside, saucy inside — mood.",
+    "price": 100,
+    "categoryId": "indo-chinese",
+    "tags": [
+      "bestSeller"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/veg-manchurian.png"
+  },
+  {
+    "id": "mushroom-manchurian",
+    "name": "Mushroom Manchurian",
+    "description": "Juicy mushrooms cooked in a bold, tangy gravy.",
+    "price": 120,
+    "categoryId": "indo-chinese",
+    "isAvailable": true,
+    "image": "/menu-images/mushroom-manchurian.png"
+  },
+  {
+    "id": "chilli-baby-corn",
+    "name": "Chilli Baby Corn",
+    "description": "Crisp baby corn tossed with onions, capsicum, and chilli sauce.",
+    "price": 100,
+    "categoryId": "indo-chinese",
+    "isAvailable": true,
+    "image": "/menu-images/chilli-baby-corn.png"
+  },
+  {
+    "id": "chilli-paneer",
+    "name": "Chilli Paneer",
+    "description": "Paneer cubes stir-fried in a spicy, glossy sauce with peppers. Paneer in its most dangerous avatar.",
+    "price": 130,
+    "categoryId": "indo-chinese",
+    "tags": [
+      "bestSeller"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/chilli-paneer.png"
+  },
+  {
+    "id": "chilli-mushroom",
+    "name": "Chilli Mushroom",
+    "description": "Mushrooms cooked till tender and coated in chilli gravy.",
+    "price": 130,
+    "categoryId": "indo-chinese",
+    "isAvailable": true,
+    "image": "/menu-images/chilli-mushroom.png"
+  },
+  {
+    "id": "paneer-65",
+    "name": "Paneer 65",
+    "description": "Deep-fried paneer tossed with spices for a crispy, spicy dish.",
+    "price": 130,
+    "categoryId": "indo-chinese",
+    "isAvailable": true,
+    "image": "/menu-images/paneer-65.png"
+  },
+  {
+    "id": "mushroom-65",
+    "name": "Mushroom 65",
+    "description": "Crispy mushrooms coated in a dry, flavourful masala.",
+    "price": 120,
+    "categoryId": "indo-chinese",
+    "isAvailable": true,
+    "image": "/menu-images/mushroom-65.png"
+  },
+  {
+    "id": "baby-corn-65",
+    "name": "Baby Corn 65",
+    "description": "Crunchy baby corn tossed in spicy seasoning.",
+    "price": 100,
+    "categoryId": "indo-chinese",
+    "isAvailable": true,
+    "image": "/menu-images/baby-corn-65.png"
+  },
+  {
+    "id": "veg-noodles",
+    "name": "Veg Noodles",
+    "description": "Soft noodles stir-fried with vegetables and light seasoning.",
+    "price": 70,
+    "categoryId": "noodles-rice",
+    "isAvailable": true,
+    "image": "/menu-images/hakka-noodles.png"
+  },
+  {
+    "id": "schezwan-noodles",
+    "name": "Schezwan Noodles",
+    "description": "Noodles tossed with spicy schezwan sauce and vegetables. Spice level: honest.",
+    "price": 70,
+    "categoryId": "noodles-rice",
+    "isAvailable": true,
+    "image": "/menu-images/schezwan-noodles.png"
+  },
+  {
+    "id": "gravy-noodles",
+    "name": "Gravy Noodles",
+    "description": "Stir-fried noodles served with flavourful gravy on top.",
+    "price": 80,
+    "categoryId": "noodles-rice",
+    "isAvailable": true,
+    "image": "/menu-images/gravy-noodles.png"
+  },
+  {
+    "id": "veg-fried-rice",
+    "name": "Veg Fried Rice",
+    "description": "Classic fried rice with vegetables and mild seasoning.",
+    "price": 90,
+    "categoryId": "noodles-rice",
+    "isAvailable": true,
+    "image": "/menu-images/veg-fried-rice.png"
+  },
+  {
+    "id": "schezwan-fried-rice",
+    "name": "Schezwan Fried Rice",
+    "description": "Spicy fried rice cooked with schezwan sauce.",
+    "price": 90,
+    "categoryId": "noodles-rice",
+    "isAvailable": true,
+    "image": "/menu-images/schezwan-rice.png"
+  },
+  {
+    "id": "tomato-fried-rice",
+    "name": "Tomato Fried Rice",
+    "description": "Rice cooked with tangy tomato flavours and mild spices.",
+    "price": 90,
+    "categoryId": "noodles-rice",
+    "isAvailable": true,
+    "image": "/menu-images/tomato-fried-rice.png"
+  },
+  {
+    "id": "kadai-paneer",
+    "name": "Kadai Paneer",
+    "description": "Bold, spicy, and full of character.",
+    "price": 130,
+    "categoryId": "indian-curry",
+    "tags": [
+      "bestSeller"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/kadai-paneer.png"
+  },
+  {
+    "id": "paneer-butter-masala",
+    "name": "Paneer Butter Masala",
+    "description": "Rich, creamy, and universally loved — unlike surprise quizzes.",
+    "price": 150,
+    "categoryId": "indian-curry",
+    "tags": [
+      "bestSeller"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/paneer-butter-masala.png"
+  },
+  {
+    "id": "paneer-bhurji",
+    "name": "Paneer Bhurji",
+    "description": "Spicy, scrambled, and perfect with anything.",
+    "price": 130,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/paneer-bhurji.png"
+  },
+  {
+    "id": "paneer-makhni",
+    "name": "Paneer Makhni",
+    "description": "Smooth, buttery, and dangerously comforting.",
+    "price": 150,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/paneer-butter-masala.png"
+  },
+  {
+    "id": "matar-paneer",
+    "name": "Matar Paneer",
+    "description": "Classic combo that never goes out of syllabus.",
+    "price": 150,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/matar-paneer.png"
+  },
+  {
+    "id": "mushroom-masala",
+    "name": "Mushroom Masala",
+    "description": "Earthy flavours, desi style.",
+    "price": 100,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/mushroom-masala.png"
+  },
+  {
+    "id": "kadai-mushroom",
+    "name": "Kadai Mushroom",
+    "description": "Smoky, spicy, and deeply satisfying.",
+    "price": 100,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/kadai-mushroom.png"
+  },
+  {
+    "id": "matar-mushroom",
+    "name": "Matar Mushroom",
+    "description": "Comfort food with a veggie twist.",
+    "price": 120,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/matar-mushroom.png"
+  },
+  {
+    "id": "punjabi-chole",
+    "name": "Punjabi Chole",
+    "description": "Strong, bold, and unapologetic.",
+    "price": 70,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/punjabi-chole.png"
+  },
+  {
+    "id": "rajma",
+    "name": "Rajma",
+    "description": "Because rajma never disappoints.",
+    "price": 70,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/rajma-curry.png"
+  },
+  {
+    "id": "punjabi-kadi",
+    "name": "Punjabi Kadi",
+    "description": "Light, tangy, and comforting.",
+    "price": 50,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/punjabi-kadi.png"
+  },
+  {
+    "id": "ghar-ki-dal",
+    "name": "Ghar Ki Dal",
+    "description": "Simple dal that feels like home.",
+    "price": 50,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/ghar-ki-dal.png"
+  },
+  {
+    "id": "dal-ghee-tadka",
+    "name": "Dal with Ghee & Garlic Tadka",
+    "description": "Because ghee makes everything better.",
+    "price": 70,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/dal-tadka.png"
+  },
+  {
+    "id": "jeera-aloo",
+    "name": "Jeera Aloo",
+    "description": "Crispy potatoes, minimal drama.",
+    "price": 50,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/jeera-aloo.png"
+  },
+  {
+    "id": "mix-veg",
+    "name": "Mix Veg",
+    "description": "Colourful, balanced, and underrated.",
+    "price": 80,
+    "categoryId": "indian-curry",
+    "isAvailable": true,
+    "image": "/menu-images/mix-veg-curry.png"
+  },
+  {
+    "id": "plain-maggi",
+    "name": "Plain Maggi",
+    "description": "Classic Maggi noodles cooked simple and comforting. Midnight saviour since forever.",
+    "price": 30,
+    "categoryId": "snacks",
+    "tags": [
+      "readyFast",
+      "bestSeller"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/maggi.png"
+  },
+  {
+    "id": "veg-stir-fried-maggi",
+    "name": "Veg Stir-Fried Maggi",
+    "description": "Maggi tossed with vegetables and street-style seasoning.",
+    "price": 50,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/veg-stir-fried-maggi.png"
+  },
+  {
+    "id": "schezwan-maggi",
+    "name": "Schezwan Maggi",
+    "description": "Maggi cooked with spicy Schezwan sauce.",
+    "price": 60,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/schezwan-maggi.png"
+  },
+  {
+    "id": "tomato-garlic-maggi",
+    "name": "Tomato Garlic Maggi",
+    "description": "Tangy tomato base with garlic flavours.",
+    "price": 60,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/tomato-garlic-maggi.png"
+  },
+  {
+    "id": "cheese-stir-fried-maggi",
+    "name": "Cheese Stir-Fried Maggi",
+    "description": "Stir-fried Maggi finished with melted cheese. Cheese makes everything negotiable.",
+    "price": 70,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/cheese-maggi.png"
+  },
+  {
+    "id": "schezwan-pasta",
+    "name": "Schezwan Pasta",
+    "description": "Pasta tossed in spicy schezwan sauce.",
+    "price": 80,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/schezwan-pasta.png"
+  },
+  {
+    "id": "tomato-garlic-pasta",
+    "name": "Tomato Garlic Pasta",
+    "description": "Pasta in tangy tomato garlic sauce.",
+    "price": 80,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/tomato-garlic-pasta.png"
+  },
+  {
+    "id": "veg-masala-pasta",
+    "name": "Veg Masala Pasta",
+    "description": "Pasta with Indian masala twist.",
+    "price": 60,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/veg-masala-pasta.png"
+  },
+  {
+    "id": "desi-pasta",
+    "name": "Desi Pasta",
+    "description": "Fusion pasta with desi flavours.",
+    "price": 90,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/desi-pasta.png"
+  },
+  {
+    "id": "cheese-pasta",
+    "name": "Cheese Pasta",
+    "description": "Creamy cheese pasta for cheese lovers.",
+    "price": 120,
+    "categoryId": "snacks",
+    "isAvailable": true,
+    "image": "/menu-images/cheese-pasta.png"
+  },
+  {
+    "id": "steamed-momos",
+    "name": "Steamed Momos",
+    "description": "Soft dumplings filled with seasoned vegetables.",
+    "price": 30,
+    "categoryId": "momos",
+    "tags": [
+      "readyFast"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/veg-momos.png"
+  },
+  {
+    "id": "deep-fried-momos",
+    "name": "Deep Fried Momos",
+    "description": "Crispy-fried momos with a crunchy outer layer.",
+    "price": 40,
+    "categoryId": "momos",
+    "isAvailable": true,
+    "image": "/menu-images/fried-momos.png"
+  },
+  {
+    "id": "tomato-garlic-momos",
+    "name": "Tomato Garlic Momos",
+    "description": "Momos tossed in tangy tomato-garlic sauce.",
+    "price": 70,
+    "categoryId": "momos",
+    "isAvailable": true,
+    "image": "/menu-images/tomato-garlic-momos.png"
+  },
+  {
+    "id": "schezwan-momos",
+    "name": "Schezwan Momos",
+    "description": "Momos coated in spicy schezwan sauce. Not spicy. Until it is.",
+    "price": 70,
+    "categoryId": "momos",
+    "isAvailable": true,
+    "image": "/menu-images/schezwan-momos.png"
+  },
+  {
+    "id": "manchurian-momos",
+    "name": "Manchurian Momos",
+    "description": "Fried momos tossed in manchurian gravy.",
+    "price": 70,
+    "categoryId": "momos",
+    "isAvailable": true,
+    "image": "/menu-images/manchurian-momos.png"
+  },
+  {
+    "id": "kurkure-momos",
+    "name": "Kurkure Momos",
+    "description": "Extra crispy momos with a crunchy coating.",
+    "price": 70,
+    "categoryId": "momos",
+    "tags": [
+      "bestSeller"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/fried-momos.png"
+  },
+  {
+    "id": "indori-poha",
+    "name": "Indori Poha",
+    "description": "Light flattened rice cooked with mustard seeds, onions, and Indori-style seasoning.",
+    "price": 40,
+    "categoryId": "quick-bites",
+    "tags": [
+      "readyFast"
+    ],
+    "addOns": [
+      {
+        "id": "sev-bhujia",
+        "name": "Sev Bhujia",
+        "price": 10
+      }
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/indori-poha.png"
+  },
+  {
+    "id": "bombay-sandwich",
+    "name": "Bombay Sandwich",
+    "description": "Grilled sandwich layered with spiced potato and vegetables.",
+    "price": 70,
+    "categoryId": "quick-bites",
+    "isAvailable": true,
+    "image": "/menu-images/bombay-sandwich.png"
+  },
+  {
+    "id": "marwadi-sandwich",
+    "name": "Marwadi Sandwich",
+    "description": "Simple sandwich with bold desi flavours.",
+    "price": 40,
+    "categoryId": "quick-bites",
+    "isAvailable": true,
+    "image": "/menu-images/marwadi-sandwich.png"
+  },
+  {
+    "id": "bread-butter",
+    "name": "Bread Butter",
+    "description": "Soft bread layered with butter.",
+    "price": 30,
+    "categoryId": "quick-bites",
+    "tags": [
+      "readyFast"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/bread-butter.png"
+  },
+  {
+    "id": "aloo-sandwich",
+    "name": "Aloo Sandwich",
+    "description": "Grilled sandwich filled with spiced potato mixture.",
+    "price": 40,
+    "categoryId": "quick-bites",
+    "isAvailable": true,
+    "image": "/menu-images/aloo-sandwich.png"
+  },
+  {
+    "id": "cheese-sandwich",
+    "name": "Cheese Sandwich",
+    "description": "Grilled sandwich with melted cheese.",
+    "price": 80,
+    "categoryId": "quick-bites",
+    "isAvailable": true,
+    "image": "/menu-images/cheese-sandwich.png"
+  },
+  {
+    "id": "aloo-cheese-sandwich",
+    "name": "Aloo Cheese Sandwich",
+    "description": "Spiced potatoes combined with cheese in a grilled sandwich.",
+    "price": 100,
+    "categoryId": "quick-bites",
+    "isAvailable": true,
+    "image": "/menu-images/aloo-cheese-sandwich.png"
+  },
+  {
+    "id": "ratlami-sandwich",
+    "name": "Ratlami Sandwich",
+    "description": "Sandwich filled with Indori ratlami spice flavours.",
+    "price": 60,
+    "categoryId": "quick-bites",
+    "isAvailable": true,
+    "image": "/menu-images/ratlami-sandwich.png"
+  },
+  {
+    "id": "nimbu-paani",
+    "name": "Nimbu Paani",
+    "description": "When life gives you lemonade, make lemons. Life will be all like, 'Whaaaat?'",
+    "price": 20,
+    "categoryId": "beverages",
+    "tags": [
+      "readyFast"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/nimbu-paani.png"
+  },
+  {
+    "id": "masala-chaas",
+    "name": "Masala Chaas",
+    "description": "Buttermilk blended with spices. Chaas that makes you Jhakaas.",
+    "price": 35,
+    "categoryId": "beverages",
+    "isAvailable": true,
+    "image": "/menu-images/masala-chaas.png"
+  },
+  {
+    "id": "cutting-chai",
+    "name": "Cutting Chai",
+    "description": "Garam chai ki piyali toh aa gayi. Pilane wali pyaari kab laa rahe ho?",
+    "price": 15,
+    "categoryId": "beverages",
+    "tags": [
+      "readyFast",
+      "bestSeller"
+    ],
+    "isAvailable": true,
+    "image": "/menu-images/cutting-chai.png"
+  },
+  {
+    "id": "masala-cold-drink",
+    "name": "Masala Cold Drink",
+    "description": "Even Coke understands masala is important in life",
+    "price": 35,
+    "categoryId": "beverages",
+    "isAvailable": true,
+    "image": "/menu-images/masala-cold-drink.png"
+  },
+  {
+    "id": "water-500ml",
+    "name": "Mineral Water (500ml)",
+    "description": "Jal nahi lenge kya?",
+    "price": 10,
+    "categoryId": "beverages",
+    "tags": [
+      "readyFast"
+    ],
+    "isAvailable": true
+  },
+  {
+    "id": "water-1l",
+    "name": "Mineral Water (1L)",
+    "description": "Jal nahi lenge kya?",
+    "price": 20,
+    "categoryId": "beverages",
+    "tags": [
+      "readyFast"
+    ],
+    "isAvailable": true
+  }
+]

@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
 import { getSessionUserId } from '@/lib/auth';
 import styles from './page.module.css';
 
@@ -51,95 +50,44 @@ export default function TrackOrderPage() {
                 return;
             }
 
-            // Figure out if the user is tracking a specific order
             const urlParams = new URLSearchParams(window.location.search);
             const urlOrderId = urlParams.get('id');
             const lastOrderStr = sessionStorage.getItem('lastOrder');
             const sessionOrderId = lastOrderStr ? JSON.parse(lastOrderStr).orderId : null;
-
             const targetOrderId = urlOrderId || sessionOrderId;
 
-            // Query Supabase directly for this visitor's recent orders (last 2 hours)
-            const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+            try {
+                const params = new URLSearchParams({ resource: 'orders', tokenId: visitorId });
+                if (targetOrderId) params.set('orderId', targetOrderId);
+                const res = await fetch(`/api/db?${params}`);
+                if (res.ok) {
+                    const data: OrderData[] = await res.json();
 
-            if (supabase) {
-                let query = supabase
-                    .from('orders')
-                    .select('*')
-                    .eq('token_id', visitorId)
-                    .gte('created_at', twoHoursAgo)
-                    .order('created_at', { ascending: false });
+                    const deliveredMapStr = sessionStorage.getItem('deliveredOrdersTime');
+                    const deliveredMap: Record<string, number> = deliveredMapStr ? JSON.parse(deliveredMapStr) : {};
+                    let mapChanged = false;
 
-                // If user has a specific order they just placed, only track that one
-                if (targetOrderId) {
-                    query = query.eq('order_id', targetOrderId);
-                }
-
-                const { data, error } = await query;
-
-                if (!error) {
-                    // Supabase query succeeded — trust its result even if empty
-                    if (data && data.length > 0) {
-                        const deliveredMapStr = sessionStorage.getItem('deliveredOrdersTime');
-                        const deliveredMap: Record<string, number> = deliveredMapStr ? JSON.parse(deliveredMapStr) : {};
-                        let mapChanged = false;
-
-                        const mappedOrders: OrderData[] = [];
-
-                        data.forEach(row => {
-                            if (row.status === 'delivered' || row.status === 'served') {
-                                if (!deliveredMap[row.order_id]) {
-                                    deliveredMap[row.order_id] = Date.now();
-                                    mapChanged = true;
-                                }
-                                const timeSinceDelivered = Date.now() - deliveredMap[row.order_id];
-                                if (timeSinceDelivered > 60000) {
-                                    return; // Check next order
-                                }
+                    const mappedOrders: OrderData[] = [];
+                    data.forEach(row => {
+                        if (row.status === 'delivered' || row.status === 'served') {
+                            if (!deliveredMap[row.orderId]) {
+                                deliveredMap[row.orderId] = Date.now();
+                                mapChanged = true;
                             }
-
-                            mappedOrders.push({
-                                orderId: row.order_id,
-                                orderType: row.order_type,
-                                tableNumber: row.table_number,
-                                tokenNumber: row.token_number || 0,
-                                items: (row.items || []).map((i: Record<string, unknown>) => ({
-                                    menuItem: { name: (i.menuItem as Record<string, unknown>)?.name || '' },
-                                    quantity: i.quantity as number,
-                                    selectedAddOns: ((i.selectedAddOns as Array<Record<string, unknown>>) || []).map(a => ({ name: a.name as string })),
-                                    totalPrice: i.totalPrice as number
-                                })),
-                                extras: (row.extras || []).map((e: Record<string, unknown>) => ({
-                                    extra: { name: (e.extra as Record<string, unknown>)?.name as string || '', price: (e.extra as Record<string, unknown>)?.price as number || 0 },
-                                    quantity: e.quantity as number
-                                })),
-                                totalAmount: row.total_amount,
-                                timestamp: row.created_at,
-                                status: row.status,
-                                preorderDetails: row.preorder_details
-                            });
-                        });
-
-                        if (mapChanged) {
-                            sessionStorage.setItem('deliveredOrdersTime', JSON.stringify(deliveredMap));
+                            if (Date.now() - deliveredMap[row.orderId] > 60000) return;
                         }
+                        mappedOrders.push(row);
+                    });
 
-                        // Keep the header in sync with the most recent tracked order
-                        const activeTrackedOrder = mappedOrders.find(o => o.status !== 'delivered' && o.status !== 'served') || mappedOrders[0];
-                        if (activeTrackedOrder) {
-                            sessionStorage.setItem('lastOrder', JSON.stringify(activeTrackedOrder));
-                        }
-
-                        setOrders(mappedOrders);
-                    } else {
-                        // No active orders — all delivered or none exist
-                        setOrders([]);
-                    }
+                    if (mapChanged) sessionStorage.setItem('deliveredOrdersTime', JSON.stringify(deliveredMap));
+                    const active = mappedOrders.find(o => o.status !== 'delivered' && o.status !== 'served') || mappedOrders[0];
+                    if (active) sessionStorage.setItem('lastOrder', JSON.stringify(active));
+                    setOrders(mappedOrders);
                     return;
                 }
-            }
+            } catch { /* fall through to sessionStorage */ }
 
-            // Fallback only if Supabase is unavailable/errored: check sessionStorage
+            // Fallback: check sessionStorage
             const fallbackOrderStr = sessionStorage.getItem('lastOrder');
             if (fallbackOrderStr) {
                 const lastOrder = JSON.parse(fallbackOrderStr);

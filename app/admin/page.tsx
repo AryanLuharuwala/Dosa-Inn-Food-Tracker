@@ -4,7 +4,6 @@ import React, { useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useMenu, Order } from '@/lib/menuContext';
 import { MenuItem } from '@/lib/menuData';
-import { createClient } from '@/lib/supabase/client';
 import styles from './page.module.css';
 
 // List of available menu images (from /public/menu-images/)
@@ -53,7 +52,7 @@ const defaultFormData: ItemFormData = {
 };
 
 export default function AdminPage() {
-    const supabase = createClient();
+
     const {
         menuItems,
         categories,
@@ -90,38 +89,15 @@ export default function AdminPage() {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Handle image upload to Supabase Storage
     const handleImageUpload = async (file: File) => {
-        // supabase is always defined with createClient, but auth check happens elsewhere or via RLS
-        // But we can check if url/key are missing if needed, but createBrowserClient doesn't expose it easily.
-        // Assuming env vars are present as app wouldn't load otherwise.
-
         setIsUploading(true);
         try {
-            // Create a unique filename
-            const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '-').toLowerCase();
-            const fileName = `${Date.now()}-${safeName}`;
-
-            // Upload to Supabase Storage
-            const { data, error } = await supabase.storage
-                .from('menu-images')
-                .upload(fileName, file, {
-                    cacheControl: '3600',
-                    upsert: false,
-                });
-
-            if (error) {
-                console.error('Upload error:', error);
-                alert(`Upload failed: ${error.message}`);
-                return;
-            }
-
-            // Get the public URL
-            const { data: urlData } = supabase.storage
-                .from('menu-images')
-                .getPublicUrl(data.path);
-
-            handleFormChange('image', urlData.publicUrl);
+            const form = new FormData();
+            form.append('file', file);
+            const res = await fetch('/api/upload', { method: 'POST', body: form });
+            if (!res.ok) throw new Error('Upload failed');
+            const { url } = await res.json();
+            handleFormChange('image', url);
         } catch (err) {
             console.error('Upload error:', err);
             alert('Failed to upload image. Please try again.');
@@ -345,6 +321,24 @@ export default function AdminPage() {
                     </Link>
                 </div>
                 <div className={styles.rushHourToggle}>
+                    <Link href="/admin/pricing" style={{
+                        marginRight: '8px',
+                        padding: '6px 12px',
+                        backgroundColor: '#5F259F',
+                        color: 'white',
+                        borderRadius: '6px',
+                        textDecoration: 'none',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="currentColor" stroke="none" />
+                        </svg>
+                        Pricing
+                    </Link>
                     <Link href="/admin/analytics" className={styles.analyticsBtn} style={{
                         marginRight: '15px',
                         padding: '6px 12px',
@@ -377,8 +371,8 @@ export default function AdminPage() {
 
                     <button
                         onClick={async () => {
-                            await supabase.auth.signOut();
-                            window.location.href = '/login?logged_out=true';
+                            await fetch('/api/auth/logout', { method: 'POST' });
+                            window.location.href = '/login';
                         }}
                         className={styles.logoutBtn}
                         style={{
