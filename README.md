@@ -2,7 +2,7 @@
 
 > **"Mess ka trauma is real. Food shouldn't be."**
 
-A mobile-first restaurant ordering system for campus dining. QR-based table ordering, preorders, PhonePe payments, a live kitchen dashboard, WhatsApp order notifications, and a full admin panel — all self-hosted, no cloud database required.
+A mobile-first restaurant ordering system for campus dining. QR-based table ordering, preorders, PhonePe payments, a live kitchen dashboard, WhatsApp order notifications, and a full admin panel — deployable to Azure Web App.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
@@ -40,24 +40,93 @@ A mobile-first restaurant ordering system for campus dining. QR-based table orde
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16 (App Router) |
+| Framework | Next.js 16 (App Router, standalone output) |
 | Language | TypeScript 5 |
-| Database | Local JSON files (`/data/*.json`) — no external DB |
-| Realtime | Server-Sent Events (`/api/events`) |
+| Database | Azure Database for PostgreSQL Flexible Server |
+| Cache / Pub-Sub | Azure Cache for Redis |
+| File storage | Azure Blob Storage |
+| Realtime | Server-Sent Events over Redis Pub/Sub |
 | Payments | PhonePe Checkout v2 |
 | WhatsApp | whatsapp-web.js (separate Node.js process) |
-| Process manager | pm2 |
+| Process manager | pm2 (local) / Azure Web App (cloud) |
 | Styling | CSS Modules + design tokens |
 | State | React Context API |
 
 ---
 
-## Quick Start
+## Azure Deployment (recommended)
+
+### Services you need
+
+| Azure service | Purpose |
+|---|---|
+| Azure Web App (Node 20) | Hosts the Next.js app |
+| Azure Database for PostgreSQL Flexible Server | Persistent data store |
+| Azure Cache for Redis | Rate limiting + SSE Pub/Sub across instances |
+| Azure Blob Storage | Menu image uploads |
+
+### 1. Provision Azure resources
+
+```bash
+# PostgreSQL — note connection string for DATABASE_URL
+# Redis — note connection string for REDIS_URL
+# Storage account — note connection string for AZURE_STORAGE_CONNECTION_STRING
+```
+
+Create the database schema once:
+```bash
+DATABASE_URL="postgresql://user:pass@host/db?sslmode=require" \
+  psql -f db/schema.sql
+```
+
+### 2. Migrate existing data (if any)
+
+If you have local JSON files in `/data/`:
+```bash
+DATABASE_URL="postgresql://..." npx tsx scripts/migrate-to-azure.ts
+```
+
+### 3. Set App Settings on Azure Web App
+
+In **Azure Portal → Your Web App → Configuration → Application settings**, add:
+
+```
+DATABASE_URL                       postgresql://user:pass@host/db?sslmode=require
+REDIS_URL                          rediss://user:pass@host:6380
+AZURE_STORAGE_CONNECTION_STRING    DefaultEndpointsProtocol=https;AccountName=...
+AZURE_STORAGE_CONTAINER_NAME       uploads
+ADMIN_PASSWORD                     your-admin-password
+PHONEPE_CLIENT_ID                  your-client-id
+PHONEPE_CLIENT_SECRET              your-client-secret
+PHONEPE_CLIENT_VERSION             1
+PHONEPE_ENV                        production
+PHONEPE_MERCHANT_ID                your-merchant-id
+NEXT_PUBLIC_BASE_URL               https://your-app.azurewebsites.net
+```
+
+Also set **Startup Command**:
+```
+node /home/site/wwwroot/server.js
+```
+
+### 4. Set up GitHub Actions CI/CD
+
+1. In GitHub repo → **Settings → Secrets and variables → Actions**, add:
+   - Secret: `AZURE_WEBAPP_PUBLISH_PROFILE` — download from Azure Portal → Web App → Overview → Get publish profile
+   - Secret: `NEXT_PUBLIC_BASE_URL` — your app URL
+2. In GitHub repo → **Settings → Secrets and variables → Actions → Variables**, add:
+   - Variable: `AZURE_WEBAPP_NAME` — your Web App name (e.g. `rocky-da-adda`)
+3. Push to `master` — the workflow in `.github/workflows/azure-deploy.yml` will build and deploy automatically.
+
+---
+
+## Local Development
 
 ### Prerequisites
 
-- Node.js 18+
-- npm
+- Node.js 20+
+- PostgreSQL (local or Docker)
+- Redis (local or Docker, optional — falls back to in-process if unavailable)
 
 ### 1. Clone & install
 
@@ -71,33 +140,45 @@ cd whatsapp-service && npm install && cd ..
 ### 2. Configure environment
 
 ```bash
-cp .env.example .env.local   # or copy manually
+cp .env.example .env.local
 ```
 
 Edit `.env.local`:
 
 ```env
+DATABASE_URL=postgresql://postgres:password@localhost:5432/rocky
+
+# Redis optional locally — rate limiting and SSE fallback to in-memory if absent
+REDIS_URL=redis://localhost:6379
+REDIS_TLS=false
+
+# Azure Blob Storage (optional locally — skip if you don't need image upload)
+AZURE_STORAGE_CONNECTION_STRING=
+AZURE_STORAGE_CONTAINER_NAME=uploads
+
 ADMIN_PASSWORD=your-password
 
 PHONEPE_CLIENT_ID=your-client-id
 PHONEPE_CLIENT_SECRET=your-client-secret
 PHONEPE_CLIENT_VERSION=1
-PHONEPE_ENV=sandbox           # or: production
+PHONEPE_ENV=sandbox
 PHONEPE_MERCHANT_ID=your-merchant-id
 
-NEXT_PUBLIC_BASE_URL=https://yoursite.com
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
-# Optional — for the voice agent feature
+# Optional — voice agent
 LIVEKIT_API_KEY=
 LIVEKIT_API_SECRET=
 NEXT_PUBLIC_LIVEKIT_URL=
-
-WA_SERVICE_PORT=3478
 ```
 
-You can also edit all of these from **Admin → WA tab → Payment & App Settings** after the first login.
+### 3. Create the schema
 
-### 3. Build & run
+```bash
+psql -U postgres -d rocky -f db/schema.sql
+```
+
+### 4. Build & run
 
 **Development:**
 ```bash
@@ -157,26 +238,31 @@ Or just double-click `start.bat` after the initial install.
 │       ├── auth/login/        # Admin login (rate-limited)
 │       ├── phonepe/status/    # PhonePe payment verification
 │       ├── events/            # SSE stream for live updates
-│       ├── upload/            # Image upload
+│       ├── upload/            # Image upload (Azure Blob)
 │       ├── whatsapp/          # Proxy to WhatsApp service
 │       ├── settings/          # Edit .env.local from admin panel
 │       └── livekit/token/     # Voice agent token (optional)
 ├── components/                # Shared UI (Header, LeafLoader, ItemSheet…)
+├── db/
+│   └── schema.sql             # PostgreSQL schema + seed data
 ├── lib/
-│   ├── localDb.ts             # File-based JSON database
+│   ├── db.ts                  # PostgreSQL pool + Redis client
+│   ├── localDb.ts             # All data access (backed by PostgreSQL)
 │   ├── menuContext.tsx        # Global state (menu, orders, settings)
 │   ├── cartContext.tsx        # Cart state
-│   ├── apiAuth.ts             # Auth helpers + rate limiter
-│   ├── paymentTokens.ts       # Server-side single-use payment tokens
-│   ├── serverEvents.ts        # SSE broadcast
+│   ├── apiAuth.ts             # Auth helpers + Redis rate limiter
+│   ├── paymentTokens.ts       # Server-side single-use payment tokens (PostgreSQL)
+│   ├── serverEvents.ts        # SSE broadcast via Redis Pub/Sub
 │   ├── whatsapp.ts            # WhatsApp notification helpers
 │   └── useSound.ts            # Sound hook
+├── scripts/
+│   └── migrate-to-azure.ts   # One-time JSON → PostgreSQL migration
 ├── whatsapp-service/
 │   └── server.js              # Standalone WhatsApp Node.js process
-├── data/                      # JSON data files (auto-created on first run)
 ├── public/
-│   ├── sounds/                # UI sound effects
-│   └── uploads/               # Uploaded menu images
+│   └── sounds/                # UI sound effects
+├── .github/workflows/
+│   └── azure-deploy.yml       # CI/CD: build + deploy to Azure Web App
 ├── ecosystem.config.js        # pm2 process config
 ├── install.sh                 # Linux self-installer
 ├── install.ps1                # Windows self-installer
@@ -195,14 +281,16 @@ The WhatsApp feature runs as a separate process (`whatsapp-service/server.js`) s
 
 The admin panel includes a live log viewer and a disconnect button.
 
+> **Note on Azure:** WhatsApp requires a persistent browser session and local disk. It is not suited to Azure Web App's ephemeral containers. Run it on a separate VM or a Linux VPS alongside the Azure deployment, or disable it if not needed.
+
 ---
 
 ## Security
 
 - All write operations on `/api/db` require an admin session cookie
 - `order_add` requires a server-issued, single-use **payment token** that is only issued after PhonePe confirms `COMPLETED` — prevents free-order attacks
-- Login is rate-limited (5 attempts / 10 min per IP)
-- PhonePe status check is rate-limited (20 req / min per IP)
+- Login is rate-limited (5 attempts / 10 min per IP) via Redis
+- PhonePe status check is rate-limited (20 req / min per IP) via Redis
 - Image upload is admin-only, max 5 MB, image types only
 - WhatsApp service only accepts connections from `127.0.0.1`
 - Sensitive env values are masked in the admin UI
@@ -211,8 +299,8 @@ The admin panel includes a live log viewer and a disconnect button.
 
 ## Admin Access
 
-Default URL: `http://localhost:3000/admin`  
-Password: set via `ADMIN_PASSWORD` in `.env.local` (or change it from the admin panel).
+Default URL: `https://your-app.azurewebsites.net/admin`  
+Password: set via `ADMIN_PASSWORD` environment variable (or change it from the admin panel).
 
 ---
 

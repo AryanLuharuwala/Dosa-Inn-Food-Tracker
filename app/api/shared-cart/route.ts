@@ -12,7 +12,7 @@ import { emit } from '@/lib/serverEvents';
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get('code');
     if (!code) return NextResponse.json({ error: 'code required' }, { status: 400 });
-    const cart = getSharedCart(code.toUpperCase());
+    const cart = await getSharedCart(code.toUpperCase());
     if (!cart) return NextResponse.json({ error: 'Cart not found or expired' }, { status: 404 });
     return NextResponse.json(cart);
 }
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
         case 'create': {
             const { tableNumber, tokenNumber } = body as { tableNumber: string; tokenNumber: number };
             if (!tableNumber) return NextResponse.json({ error: 'tableNumber required' }, { status: 400 });
-            const cart = createSharedCart(tableNumber, tokenNumber, visitorId);
+            const cart = await createSharedCart(tableNumber, tokenNumber, visitorId);
             emit(`shared-cart:${cart.code}`, 'participants');
             return NextResponse.json(cart);
         }
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
         case 'join': {
             const { code, mergeParticipants } = body as { code: string; mergeParticipants?: import('@/lib/localDb').SharedCartParticipant[] };
             if (!code) return NextResponse.json({ error: 'code required' }, { status: 400 });
-            const cart = joinSharedCart(code.toUpperCase(), visitorId, mergeParticipants);
+            const cart = await joinSharedCart(code.toUpperCase(), visitorId, mergeParticipants);
             if (!cart) return NextResponse.json({ error: 'Cart not found or expired' }, { status: 404 });
             emit(`shared-cart:${cart.code}`, 'participants');
             return NextResponse.json(cart);
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
                 items: SharedCartItem[];
                 extras: SharedCartExtra[];
             };
-            const cart = updateSharedCartParticipant(code.toUpperCase(), visitorId, items, extras);
+            const cart = await updateSharedCartParticipant(code.toUpperCase(), visitorId, items, extras);
             if (!cart) return NextResponse.json({ error: 'Cart not found or participant not in cart' }, { status: 404 });
             emit(`shared-cart:${code.toUpperCase()}`, 'participants');
             return NextResponse.json(cart);

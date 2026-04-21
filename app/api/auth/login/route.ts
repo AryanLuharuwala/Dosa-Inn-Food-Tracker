@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const ip = getClientIp(req);
 
     // 5 attempts per IP per 10 minutes — blocks brute force
-    if (rateLimited(`login:${ip}`, 5, 10 * 60_000)) {
+    if (await rateLimited(`login:${ip}`, 5, 10 * 60_000)) {
         return NextResponse.json({ error: 'Too many attempts. Try again in 10 minutes.' }, { status: 429 });
     }
 

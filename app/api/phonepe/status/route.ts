@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     const ip = getClientIp(req);
 
     // Rate limit: 20 status checks per IP per minute
-    if (rateLimited(`phonepe-status:${ip}`, 20, 60_000)) {
+    if (await rateLimited(`phonepe-status:${ip}`, 20, 60_000)) {
         return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
     }
 

@@ -23,7 +23,6 @@ const ADMIN_ONLY = new Set([
     'chef_upsert', 'chef_delete', 'chef_categories_set',
 ]);
 
-// Public POST actions — caller must still prove payment for order_add
 const PUBLIC_POST = new Set([
     'order_add',
     'log_cancellation', 'log_cart_abandonment', 'log_payment',
@@ -42,68 +41,55 @@ export async function GET(req: NextRequest) {
 
     switch (resource) {
         case 'menu_items':
-            return NextResponse.json(getMenuItems());
+            return NextResponse.json(await getMenuItems());
 
         case 'categories':
-            return NextResponse.json(getCategories());
+            return NextResponse.json(await getCategories());
 
         case 'orders': {
-            const orders = getOrders();
+            const orders = await getOrders();
 
-            // Admin gets all orders (for kitchen/admin pages)
-            if (isAdmin) {
-                return NextResponse.json(orders);
-            }
+            if (isAdmin) return NextResponse.json(orders);
 
-            // Customers must supply their visitor tokenId — only see their own recent orders
-            if (!tokenId) {
-                return NextResponse.json({ error: 'tokenId required' }, { status: 400 });
-            }
+            if (!tokenId) return NextResponse.json({ error: 'tokenId required' }, { status: 400 });
             const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
             const filtered = orders.filter(o =>
-                o.tokenId === tokenId &&
-                new Date(o.timestamp).getTime() > twoHoursAgo
+                o.tokenId === tokenId && new Date(o.timestamp).getTime() > twoHoursAgo
             );
             if (orderId) return NextResponse.json(filtered.filter(o => o.orderId === orderId));
             return NextResponse.json(filtered);
         }
 
         case 'active_tokens': {
-            const orders = getOrders();
-            const active = orders
-                .filter(o => o.status !== 'delivered')
-                .map(o => o.tokenNumber);
-            return NextResponse.json(active);
+            const orders = await getOrders();
+            return NextResponse.json(orders.filter(o => o.status !== 'delivered').map(o => o.tokenNumber));
         }
 
         case 'settings':
             if (!isAdmin) return deny();
-            return NextResponse.json(getSettings());
+            return NextResponse.json(await getSettings());
 
         case 'chefs':
-            return NextResponse.json(getChefs());
+            return NextResponse.json(await getChefs());
 
         case 'chef_categories':
-            return NextResponse.json(getChefCategories());
+            return NextResponse.json(await getChefCategories());
 
-        // Admin-only: export all data
         case 'export': {
             if (!isAdmin) return deny();
             const format = req.nextUrl.searchParams.get('format') ?? 'json';
-            const payload = {
-                orders: getOrders(),
-                menu_items: getMenuItems(),
-                categories: getCategories(),
-                chefs: getChefs(),
-                settings: getSettings(),
-                exported_at: new Date().toISOString(),
-            };
+            const [orders, menu_items, categories, chefs, settings] = await Promise.all([
+                getOrders(), getMenuItems(), getCategories(), getChefs(), getSettings(),
+            ]);
+            const payload = { orders, menu_items, categories, chefs, settings, exported_at: new Date().toISOString() };
             if (format === 'csv') {
-                const orders = payload.orders as unknown as Record<string, unknown>[];
-                if (!orders.length) return new Response('orderId,tokenNumber,orderType,status,totalAmount,customerName,customerPhone,createdAt\n', { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } });
-                const keys = ['orderId', 'tokenNumber', 'orderType', 'status', 'totalAmount', 'customerName', 'customerPhone', 'createdAt'];
-                const rows = orders.map(o => keys.map(k => JSON.stringify(o[k] ?? '')).join(','));
-                const csv = [keys.join(','), ...rows].join('\n');
+                const rows = orders as unknown as Record<string, unknown>[];
+                if (!rows.length) return new Response(
+                    'orderId,tokenNumber,orderType,status,totalAmount,customerName,customerPhone,createdAt\n',
+                    { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } }
+                );
+                const keys = ['orderId', 'tokenNumber', 'orderType', 'status', 'totalAmount', 'customerName', 'customerPhone', 'timestamp'];
+                const csv = [keys.join(','), ...rows.map(o => keys.map(k => JSON.stringify(o[k] ?? '')).join(','))].join('\n');
                 return new Response(csv, { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } });
             }
             return NextResponse.json(payload);
@@ -120,15 +106,10 @@ export async function POST(req: NextRequest) {
     const { action } = body;
     const isAdmin = isAdminRequest(req);
 
-    // Block anything not in our known action lists
     if (!ADMIN_ONLY.has(action) && !PUBLIC_POST.has(action)) {
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
-
-    // Admin-only actions require the session cookie
-    if (ADMIN_ONLY.has(action) && !isAdmin) {
-        return deny();
-    }
+    if (ADMIN_ONLY.has(action) && !isAdmin) return deny();
 
     switch (action) {
 
@@ -136,49 +117,48 @@ export async function POST(req: NextRequest) {
 
         case 'menu_update_item': {
             const { id, updates } = body as { id: string; updates: Partial<MenuItem> };
-            const items = getMenuItems() as MenuItem[];
-            const next = items.map(i => i.id === id ? { ...i, ...updates } : i);
-            saveMenuItems(next);
+            const items = await getMenuItems() as MenuItem[];
+            await saveMenuItems(items.map(i => i.id === id ? { ...i, ...updates } : i));
             emit('menu', 'menu_items');
             return NextResponse.json({ ok: true });
         }
 
         case 'menu_add_item': {
             const { item } = body as { item: MenuItem };
-            const items = getMenuItems() as MenuItem[];
-            saveMenuItems([...items, item]);
+            const items = await getMenuItems() as MenuItem[];
+            await saveMenuItems([...items, item]);
             emit('menu', 'menu_items');
             return NextResponse.json({ ok: true });
         }
 
         case 'menu_delete_item': {
             const { id } = body as { id: string };
-            const items = getMenuItems() as MenuItem[];
-            saveMenuItems(items.filter(i => i.id !== id));
+            const items = await getMenuItems() as MenuItem[];
+            await saveMenuItems(items.filter(i => i.id !== id));
             emit('menu', 'menu_items');
             return NextResponse.json({ ok: true });
         }
 
         case 'category_add': {
             const { cat } = body as { cat: import('@/lib/menuData').Category };
-            const cats = getCategories() as import('@/lib/menuData').Category[];
-            saveCategories([...cats, cat]);
+            const cats = await getCategories() as import('@/lib/menuData').Category[];
+            await saveCategories([...cats, cat]);
             emit('menu', 'categories');
             return NextResponse.json({ ok: true });
         }
 
         case 'category_update': {
             const { id, updates } = body as { id: string; updates: Partial<import('@/lib/menuData').Category> };
-            const cats = getCategories() as import('@/lib/menuData').Category[];
-            saveCategories(cats.map(c => c.id === id ? { ...c, ...updates } : c));
+            const cats = await getCategories() as import('@/lib/menuData').Category[];
+            await saveCategories(cats.map(c => c.id === id ? { ...c, ...updates } : c));
             emit('menu', 'categories');
             return NextResponse.json({ ok: true });
         }
 
         case 'category_delete': {
             const { id } = body as { id: string };
-            const cats = getCategories() as import('@/lib/menuData').Category[];
-            saveCategories(cats.filter(c => c.id !== id));
+            const cats = await getCategories() as import('@/lib/menuData').Category[];
+            await saveCategories(cats.filter(c => c.id !== id));
             emit('menu', 'categories');
             return NextResponse.json({ ok: true });
         }
@@ -188,15 +168,11 @@ export async function POST(req: NextRequest) {
         case 'order_add': {
             const { order, paymentToken } = body as { order: Order; paymentToken?: string };
 
-            // Verify server-issued payment token — prevents free order injection
-            if (!paymentToken || !consumePaymentToken(paymentToken, order.totalAmount)) {
-                return NextResponse.json(
-                    { error: 'Invalid or expired payment token' },
-                    { status: 403 }
-                );
+            if (!paymentToken || !await consumePaymentToken(paymentToken, order.totalAmount)) {
+                return NextResponse.json({ error: 'Invalid or expired payment token' }, { status: 403 });
             }
 
-            appendOrder(order);
+            await appendOrder(order);
             emit('menu', 'orders');
 
             if (order.customerPhone) {
@@ -212,21 +188,18 @@ export async function POST(req: NextRequest) {
                 });
                 sendWhatsApp(order.customerPhone, msg).catch(() => {});
             }
-
             return NextResponse.json({ ok: true });
         }
 
         case 'order_status': {
-            // Admin only (guard already checked above)
             const { orderId, status, items } = body as {
-                orderId: string;
-                status: Order['status'];
-                items?: Order['items'];
+                orderId: string; status: Order['status']; items?: Order['items'];
             };
-            dbUpdateOrderStatus(orderId, status, items);
+            await dbUpdateOrderStatus(orderId, status, items);
             emit('menu', 'orders');
 
-            const updatedOrder = getOrders().find(o => o.orderId === orderId);
+            const orders = await getOrders();
+            const updatedOrder = orders.find(o => o.orderId === orderId);
             if (updatedOrder?.customerPhone) {
                 const msg = formatOrderMessage({
                     customerName: updatedOrder.customerName,
@@ -240,15 +213,13 @@ export async function POST(req: NextRequest) {
                 });
                 sendWhatsApp(updatedOrder.customerPhone, msg).catch(() => {});
             }
-
             return NextResponse.json({ ok: true });
         }
 
         // ── Settings (admin only) ─────────────────────────────────────────────
 
         case 'settings_save': {
-            const { settings } = body;
-            saveSettings(settings);
+            await saveSettings(body.settings);
             emit('menu', 'settings');
             return NextResponse.json({ ok: true });
         }
@@ -257,53 +228,45 @@ export async function POST(req: NextRequest) {
 
         case 'chef_upsert': {
             const { chef } = body as { chef: Chef };
-            const chefs = getChefs();
+            const chefs = await getChefs();
             const idx = chefs.findIndex(c => c.id === chef.id);
-            if (idx >= 0) chefs[idx] = chef;
-            else chefs.push(chef);
-            saveChefs(chefs);
+            if (idx >= 0) chefs[idx] = chef; else chefs.push(chef);
+            await saveChefs(chefs);
             emit('kitchen', 'chefs');
             return NextResponse.json({ ok: true });
         }
 
         case 'chef_delete': {
             const { id } = body as { id: string };
-            const chefs = getChefs().filter(c => c.id !== id);
-            saveChefs(chefs);
-            const cc = getChefCategories().filter(c => c.chef_id !== id);
-            saveChefCategories(cc);
+            await saveChefs((await getChefs()).filter(c => c.id !== id));
+            await saveChefCategories((await getChefCategories()).filter(c => c.chef_id !== id));
             emit('kitchen', 'chefs');
             return NextResponse.json({ ok: true });
         }
 
         case 'chef_categories_set': {
             const { chef_id, category_ids } = body as { chef_id: string; category_ids: string[] };
-            let cc = getChefCategories().filter(c =>
-                c.chef_id !== chef_id && !category_ids.includes(c.category_id)
-            );
-            const newRows: ChefCategory[] = category_ids.map(cid => ({ chef_id, category_id: cid }));
-            cc = [...cc, ...newRows];
-            saveChefCategories(cc);
+            const existing = await getChefCategories();
+            const kept = existing.filter(c => c.chef_id !== chef_id && !category_ids.includes(c.category_id));
+            const added: ChefCategory[] = category_ids.map(cid => ({ chef_id, category_id: cid }));
+            await saveChefCategories([...kept, ...added]);
             emit('kitchen', 'chef_categories');
             return NextResponse.json({ ok: true });
         }
 
         // ── Analytics (public, append-only) ──────────────────────────────────
 
-        case 'log_cancellation': {
-            logCancellation(body.entry);
+        case 'log_cancellation':
+            await logCancellation(body.entry);
             return NextResponse.json({ ok: true });
-        }
 
-        case 'log_cart_abandonment': {
-            logCartAbandonment(body.entry);
+        case 'log_cart_abandonment':
+            await logCartAbandonment(body.entry);
             return NextResponse.json({ ok: true });
-        }
 
-        case 'log_payment': {
-            logPayment(body.entry);
+        case 'log_payment':
+            await logPayment(body.entry);
             return NextResponse.json({ ok: true });
-        }
 
         default:
             return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
