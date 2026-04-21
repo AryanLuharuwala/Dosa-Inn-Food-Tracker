@@ -53,8 +53,12 @@ export async function POST(req: NextRequest) {
         // last resort is the request URL (which inside a container is the pod hostname)
         const forwardedHost = req.headers.get('x-forwarded-host');
         const forwardedProto = req.headers.get('x-forwarded-proto');
+        const rawConfig = process.env.NEXT_PUBLIC_BASE_URL?.trim().replace(/\/$/, '');
+        const configBase = rawConfig
+            ? (/^https?:\/\//i.test(rawConfig) ? rawConfig : `https://${rawConfig}`)
+            : null;
         const baseUrl =
-            process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') ||
+            configBase ||
             (forwardedHost ? `${forwardedProto ?? 'https'}://${forwardedHost}` : null) ||
             `${req.nextUrl.protocol}//${req.nextUrl.host}`;
         const accessToken = await getAccessToken();
