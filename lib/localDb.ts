@@ -48,8 +48,8 @@ async function seedMenuItemsToDb() {
     const col = db.collection('menu_items');
     for (const item of seedMenuItems as unknown as Record<string, unknown>[]) {
         await col.updateOne(
-            { id: item.id },
-            { $setOnInsert: { ...item, createdAt: new Date() } },
+            { _id: item.id as import('mongodb').ObjectId },
+            { $setOnInsert: { _id: item.id, ...item, createdAt: new Date() } },
             { upsert: true }
         );
     }
@@ -61,8 +61,8 @@ export async function saveMenuItems(items: unknown[]) {
     for (const _item of items) {
         const item = _item as Record<string, unknown>;
         await col.updateOne(
-            { id: item.id },
-            { $set: { ...item, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+            { _id: item.id as import('mongodb').ObjectId },
+            { $set: { ...item, updatedAt: new Date() }, $setOnInsert: { _id: item.id, createdAt: new Date() } },
             { upsert: true }
         );
     }
@@ -71,14 +71,14 @@ export async function saveMenuItems(items: unknown[]) {
 export async function updateMenuItemFields(id: string, updates: Record<string, unknown>) {
     const db = await getDb();
     await db.collection('menu_items').updateOne(
-        { id },
+        { _id: id as unknown as import('mongodb').ObjectId },
         { $set: { ...updates, updatedAt: new Date() } }
     );
 }
 
 export async function deleteMenuItemById(id: string) {
     const db = await getDb();
-    await db.collection('menu_items').deleteOne({ id });
+    await db.collection('menu_items').deleteOne({ _id: id as unknown as import('mongodb').ObjectId });
 }
 
 // ── Categories ─────────────────────────────────────────────────────────────────
@@ -106,8 +106,8 @@ async function seedCategoriesToDb() {
     const col = db.collection('categories');
     for (const cat of seedCategories as unknown as Record<string, unknown>[]) {
         await col.updateOne(
-            { id: cat.id },
-            { $setOnInsert: { ...cat, createdAt: new Date() } },
+            { _id: cat.id as import('mongodb').ObjectId },
+            { $setOnInsert: { _id: cat.id, ...cat, createdAt: new Date() } },
             { upsert: true }
         );
     }
@@ -119,8 +119,8 @@ export async function saveCategories(cats: unknown[]) {
     for (const _cat of cats) {
         const cat = _cat as Record<string, unknown>;
         await col.updateOne(
-            { id: cat.id },
-            { $set: { ...cat, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+            { _id: cat.id as import('mongodb').ObjectId },
+            { $set: { ...cat, updatedAt: new Date() }, $setOnInsert: { _id: cat.id, createdAt: new Date() } },
             { upsert: true }
         );
     }
