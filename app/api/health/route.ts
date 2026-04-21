@@ -16,7 +16,23 @@ export async function GET() {
         for (const c of collections) {
             counts[c.name] = await db.collection(c.name).countDocuments();
         }
-        return NextResponse.json({ ok: true, env, dbName: db.databaseName, collections: counts });
+
+        // Sample one menu_item to see the actual document shape
+        const sampleMenuItem = await db.collection('menu_items').findOne({});
+
+        return NextResponse.json({
+            ok: true, env, dbName: db.databaseName, collections: counts,
+            sampleMenuItem: sampleMenuItem ? {
+                _id_type: typeof sampleMenuItem._id,
+                _id_value: String(sampleMenuItem._id),
+                hasIdField: 'id' in sampleMenuItem,
+                id_field_value: sampleMenuItem.id,
+                price: sampleMenuItem.price,
+                isAvailable: sampleMenuItem.isAvailable,
+                updatedAt: sampleMenuItem.updatedAt,
+                keys: Object.keys(sampleMenuItem),
+            } : null,
+        });
     } catch (e) {
         return NextResponse.json({ ok: false, env, error: String(e) }, { status: 500 });
     }
