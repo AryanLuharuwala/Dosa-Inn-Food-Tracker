@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/lib/cartContext';
+import { useMenu } from '@/lib/menuContext';
 import styles from './Header.module.css';
 import Link from 'next/link';
 
@@ -17,6 +18,7 @@ interface HeaderProps {
 export default function Header({ showCart = true, showBack = false, onBack, title, showServing = true }: HeaderProps) {
     const router = useRouter();
     const { totalItems, tableNumber, orderType } = useCart();
+    const { restaurantName } = useMenu();
     const [activeTrackingLabel, setActiveTrackingLabel] = useState<string | null>(null);
     const [mounted, setMounted] = useState(false);
 
@@ -62,10 +64,10 @@ export default function Header({ showCart = true, showBack = false, onBack, titl
                     <h1 className={styles.title}>{title}</h1>
                 ) : (
                     <Link href="/" className={styles.logoLink}>
-                        <img src="/logo.png" alt="Rocky Da Adda" className={styles.logo} />
+                        <img src="/logo.png" alt={restaurantName} className={styles.logo} />
                         {showServing && (
                             <div className={styles.servingText}>
-                                <span className={styles.brandName}>Rocky Da Adda</span>
+                                <span className={styles.brandName}>{restaurantName}</span>
                                 <span className={styles.servingStatus}>is serving</span>
                             </div>
                         )}

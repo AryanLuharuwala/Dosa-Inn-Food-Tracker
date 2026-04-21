@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getSessionUserId } from '@/lib/auth';
 import { useSound } from '@/lib/useSound';
+import { useMenu } from '@/lib/menuContext';
 import styles from './page.module.css';
 
 interface OrderItem {
@@ -35,6 +36,7 @@ interface OrderData {
 
 export default function TrackOrderPage() {
     const router = useRouter();
+    const { restaurantName } = useMenu();
     const [orders, setOrders] = useState<OrderData[]>([]);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -164,7 +166,7 @@ export default function TrackOrderPage() {
         return (
             <div className={styles.container}>
                 <header className={styles.header}>
-                    <Link href="/" className={styles.logoLink}><img src="/logo.png" alt="Rocky Da Adda" className={styles.logo} /></Link>
+                    <Link href="/" className={styles.logoLink}><img src="/logo.png" alt={restaurantName} className={styles.logo} /></Link>
                     <h2 className={styles.headerTitle}>Track Orders</h2>
                 </header>
                 <div className={styles.emptyState}>
@@ -180,7 +182,7 @@ export default function TrackOrderPage() {
     return (
         <div className={styles.container}>
             <header className={styles.header}>
-                <Link href="/" className={styles.logoLink}><img src="/logo.png" alt="Rocky Da Adda" className={styles.logo} /></Link>
+                <Link href="/" className={styles.logoLink}><img src="/logo.png" alt={restaurantName} className={styles.logo} /></Link>
                 <h2 className={styles.headerTitle}>Track Orders</h2>
             </header>
 

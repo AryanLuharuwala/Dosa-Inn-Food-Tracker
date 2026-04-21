@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMenu } from '@/lib/menuContext';
 import styles from './page.module.css';
 import Link from 'next/link';
 
@@ -11,6 +12,7 @@ export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
     const [password, setPassword] = useState('');
     const router = useRouter();
+    const { restaurantName } = useMenu();
 
     // Password login
     const handleGoogleLogin = async () => { /* removed */ };
@@ -35,7 +37,7 @@ export default function LoginPage() {
     return (
         <div className={styles.container}>
             <div className={styles.card}>
-                <img src="/logo.png" alt="Rocky Da Adda" className={styles.logo} />
+                <img src="/logo.png" alt={restaurantName} className={styles.logo} />
                 <h1 className={styles.title}>Admin Login</h1>
                 <p className={styles.subtitle}>Secure access for management</p>
 

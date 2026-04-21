@@ -122,7 +122,10 @@ export default function AdminPage() {
         setRushHourMode,
         toggleRushHourItem,
         setRushHourItems,
-        updateOrderStatus
+        updateOrderStatus,
+        restaurantName,
+        tagline: contextTagline,
+        updateBranding,
     } = useMenu();
 
     const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'rush-hour' | 'whatsapp'>('orders');
@@ -215,6 +218,40 @@ export default function AdminPage() {
         setWaInfo(null);
     };
 
+    // Branding — sync initial values from context once loaded
+    const [brandingName, setBrandingName] = useState('');
+    const [brandingTagline, setBrandingTagline] = useState('');
+    const [brandingSaving, setBrandingSaving] = useState(false);
+    const [brandingSaved, setBrandingSaved] = useState(false);
+
+    // Env settings (PhonePe, base URL, admin password)
+    type EnvFields = {
+        ADMIN_PASSWORD: string;
+        PHONEPE_CLIENT_ID: string;
+        PHONEPE_CLIENT_SECRET: string;
+        PHONEPE_CLIENT_VERSION: string;
+        PHONEPE_ENV: string;
+        PHONEPE_MERCHANT_ID: string;
+        NEXT_PUBLIC_BASE_URL: string;
+    };
+    const [envFields, setEnvFields] = useState<EnvFields>({
+        ADMIN_PASSWORD: '', PHONEPE_CLIENT_ID: '', PHONEPE_CLIENT_SECRET: '',
+        PHONEPE_CLIENT_VERSION: '', PHONEPE_ENV: '', PHONEPE_MERCHANT_ID: '',
+        NEXT_PUBLIC_BASE_URL: '',
+    });
+    const [envSaving, setEnvSaving] = useState(false);
+    const [envSaved, setEnvSaved] = useState(false);
+    const [envLoaded, setEnvLoaded] = useState(false);
+    const [envOpen, setEnvOpen] = useState(false);
+    const brandingInitialized = React.useRef(false);
+    React.useEffect(() => {
+        if (!brandingInitialized.current && restaurantName) {
+            setBrandingName(restaurantName);
+            setBrandingTagline(contextTagline);
+            brandingInitialized.current = true;
+        }
+    }, [restaurantName, contextTagline]);
+
     // WA logs
     const [waLogs, setWaLogs] = useState<string>('');
     const [waLogsOpen, setWaLogsOpen] = useState(false);
@@ -227,6 +264,39 @@ export default function AdminPage() {
             setWaLogs(combined || '(no logs yet)');
         } catch { setWaLogs('Service unavailable'); }
     }, []);
+
+    const fetchEnvSettings = useCallback(async () => {
+        try {
+            const res = await fetch('/api/settings');
+            if (!res.ok) return;
+            const data = await res.json();
+            setEnvFields(prev => ({ ...prev, ...data }));
+            setEnvLoaded(true);
+        } catch { /* ignore */ }
+    }, []);
+
+    const handleEnvSave = useCallback(async () => {
+        setEnvSaving(true);
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(envFields),
+        });
+        setEnvSaving(false);
+        if (res.ok) {
+            setEnvSaved(true);
+            setTimeout(() => setEnvSaved(false), 2000);
+        }
+    }, [envFields]);
+
+    const handleBrandingSave = useCallback(async () => {
+        if (!brandingName.trim()) return;
+        setBrandingSaving(true);
+        await updateBranding(brandingName.trim(), brandingTagline.trim());
+        setBrandingSaving(false);
+        setBrandingSaved(true);
+        setTimeout(() => setBrandingSaved(false), 2000);
+    }, [brandingName, brandingTagline, updateBranding]);
 
     // Data export
     const handleExport = useCallback(async (format: 'json' | 'csv') => {
@@ -514,7 +584,7 @@ export default function AdminPage() {
                 <div className={styles.headerLeft}>
                     <Link href="/" className={styles.backLink}>← Home</Link>
                     <Link href="/" className={styles.logoLink}>
-                        <img src="/logo.png" alt="Rocky Da Adda" className={styles.logo} />
+                        <img src="/logo.png" alt={restaurantName} className={styles.logo} />
                     </Link>
                     <span className={styles.adminBadge}>Admin</span>
                     <Link href="/kitchen" className={styles.adminBadge} style={{ backgroundColor: '#ff9800', cursor: 'pointer' }}>
@@ -1016,6 +1086,90 @@ export default function AdminPage() {
                                 </div>
                             </div>
                         )}
+
+                        {/* Branding */}
+                        <div className={styles.waInstructions}>
+                            <h3>Restaurant Name &amp; Tagline</h3>
+                            <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: 12 }}>
+                                Shown across all pages — menu, tracking, table screen, etc.
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                <input
+                                    type="text"
+                                    value={brandingName}
+                                    onChange={e => setBrandingName(e.target.value)}
+                                    placeholder="Restaurant name"
+                                    style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ddd', fontSize: '1rem', width: '100%' }}
+                                />
+                                <input
+                                    type="text"
+                                    value={brandingTagline}
+                                    onChange={e => setBrandingTagline(e.target.value)}
+                                    placeholder="Tagline (e.g. 100% Pure Veg)"
+                                    style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ddd', fontSize: '1rem', width: '100%' }}
+                                />
+                                <button
+                                    className={styles.waConnectBtn}
+                                    onClick={handleBrandingSave}
+                                    disabled={brandingSaving || !brandingName.trim()}
+                                    style={{ alignSelf: 'flex-start' }}
+                                >
+                                    {brandingSaving ? 'Saving…' : brandingSaved ? 'Saved!' : 'Save'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Environment / Payment Settings */}
+                        <div className={styles.waInstructions}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <h3 style={{ margin: 0 }}>Payment &amp; App Settings</h3>
+                                <button
+                                    className={styles.waConnectBtn}
+                                    style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                                    onClick={async () => {
+                                        if (!envLoaded) await fetchEnvSettings();
+                                        setEnvOpen(v => !v);
+                                    }}
+                                >
+                                    {envOpen ? 'Hide' : 'Edit'}
+                                </button>
+                            </div>
+                            <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: 8 }}>
+                                PhonePe credentials, admin password, and base URL. Saved to <code>.env.local</code> on disk.
+                            </p>
+                            {envOpen && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                                    {([
+                                        { key: 'ADMIN_PASSWORD', label: 'Admin Password', type: 'password' },
+                                        { key: 'NEXT_PUBLIC_BASE_URL', label: 'App Base URL', type: 'text' },
+                                        { key: 'PHONEPE_CLIENT_ID', label: 'PhonePe Client ID', type: 'text' },
+                                        { key: 'PHONEPE_CLIENT_SECRET', label: 'PhonePe Client Secret', type: 'password' },
+                                        { key: 'PHONEPE_CLIENT_VERSION', label: 'PhonePe Client Version', type: 'text' },
+                                        { key: 'PHONEPE_MERCHANT_ID', label: 'PhonePe Merchant ID', type: 'text' },
+                                        { key: 'PHONEPE_ENV', label: 'PhonePe Env (sandbox / production)', type: 'text' },
+                                    ] as { key: keyof EnvFields; label: string; type: string }[]).map(({ key, label, type }) => (
+                                        <div key={key}>
+                                            <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: 4 }}>{label}</label>
+                                            <input
+                                                type={type}
+                                                value={envFields[key]}
+                                                onChange={e => setEnvFields(prev => ({ ...prev, [key]: e.target.value }))}
+                                                placeholder={label}
+                                                style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ddd', fontSize: '0.9rem', width: '100%' }}
+                                            />
+                                        </div>
+                                    ))}
+                                    <button
+                                        className={styles.waConnectBtn}
+                                        onClick={handleEnvSave}
+                                        disabled={envSaving}
+                                        style={{ alignSelf: 'flex-start' }}
+                                    >
+                                        {envSaving ? 'Saving…' : envSaved ? 'Saved! (restart app to apply)' : 'Save Settings'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
 
                         {/* Data Export */}
                         <div className={styles.waInstructions}>

@@ -90,13 +90,15 @@ export function updateOrderStatus(orderId: string, status: Order['status'], item
 
 // ── Settings ───────────────────────────────────────────────────────────────
 
-interface Settings {
+export interface Settings {
     rushHourMode: boolean;
     rushHourItems: string[];
+    restaurantName?: string;
+    tagline?: string;
 }
 
 export function getSettings(): Settings {
-    return read<Settings>('settings', { rushHourMode: false, rushHourItems: [] });
+    return read<Settings>('settings', { rushHourMode: false, rushHourItems: [], restaurantName: 'Rocky Da Adda', tagline: '100% Pure Veg' });
 }
 
 export function saveSettings(s: Settings) {

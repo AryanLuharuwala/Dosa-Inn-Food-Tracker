@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/lib/cartContext';
+import { useMenu } from '@/lib/menuContext';
 import LeafLoader from '@/components/LeafLoader';
 import styles from './page.module.css';
 
@@ -43,6 +44,7 @@ function generateTimeSlots(): string[] {
 export default function PreorderPage() {
     const router = useRouter();
     const { setOrderType, setPreorderDetails, setTableNumber } = useCart();
+    const { restaurantName } = useMenu();
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -108,7 +110,7 @@ export default function PreorderPage() {
                         </svg>
                     </Link>
                     <Link href="/" className={styles.logoLink}>
-                        <img src="/logo.png" alt="Rocky Da Adda" className={styles.logo} />
+                        <img src="/logo.png" alt={restaurantName} className={styles.logo} />
                     </Link>
                 </div>
 

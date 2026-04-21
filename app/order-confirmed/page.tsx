@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useMenu } from '@/lib/menuContext';
 import styles from './page.module.css';
 
 interface OrderData {
@@ -27,6 +28,7 @@ interface OrderData {
 
 export default function OrderConfirmedPage() {
     const router = useRouter();
+    const { restaurantName } = useMenu();
     const [order, setOrder] = useState<OrderData | null>(null);
     const [showConfetti, setShowConfetti] = useState(true);
 
@@ -50,7 +52,7 @@ export default function OrderConfirmedPage() {
             {/* Header with Logo */}
             <header className={styles.header}>
                 <Link href="/" className={styles.logoLink}>
-                    <img src="/logo.png" alt="Rocky Da Adda" className={styles.logo} />
+                    <img src="/logo.png" alt={restaurantName} className={styles.logo} />
                 </Link>
             </header>
             {/* Confetti Animation */}

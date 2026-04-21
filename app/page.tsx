@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMenu } from '@/lib/menuContext';
 import styles from './page.module.css';
 import LeafLoader from '@/components/LeafLoader';
 
@@ -9,6 +10,7 @@ const ADMIN_PASSWORD = 'rocky123'; // Simple password for demo - in production u
 
 export default function LandingPage() {
   const router = useRouter();
+  const { restaurantName, tagline } = useMenu();
   const [showLoader, setShowLoader] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -129,7 +131,7 @@ export default function LandingPage() {
           >
             <img
               src="/logo.png"
-              alt="Rocky Da Adda - 100% Pure Veg"
+              alt={`${restaurantName}${tagline ? ` - ${tagline}` : ''}`}
               className={styles.logo}
             />
             <div className={styles.logoGlow} />

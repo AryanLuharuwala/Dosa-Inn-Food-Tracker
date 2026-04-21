@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/lib/cartContext';
+import { useMenu } from '@/lib/menuContext';
 import LeafLoader from '@/components/LeafLoader';
 import { getUniqueToken } from '@/lib/tokens';
 import styles from './page.module.css';
@@ -11,6 +12,7 @@ import styles from './page.module.css';
 export default function TablePage() {
     const router = useRouter();
     const { setTableNumber, setOrderType } = useCart();
+    const { restaurantName } = useMenu();
     const [table, setTable] = useState('');
     const [showLoader, setShowLoader] = useState(false);
     const [isAssigning, setIsAssigning] = useState(true);
@@ -69,14 +71,14 @@ export default function TablePage() {
                 {/* Header */}
                 <div className={styles.header}>
                     <Link href="/" className={styles.logoLink}>
-                        <img src="/logo.png" alt="Rocky Da Adda" className={styles.logo} />
+                        <img src="/logo.png" alt={restaurantName} className={styles.logo} />
                     </Link>
                 </div>
 
                 {/* Content */}
                 <div className={styles.content}>
                     <div className={styles.titleSection}>
-                        <h1 className={styles.title}>Welcome to Rocky Da Adda</h1>
+                        <h1 className={styles.title}>Welcome to {restaurantName}</h1>
                         <p className={styles.subtitle}>
                             {isAssigning ? 'Assigning your token...' : 'Your unique token number has been assigned'}
                         </p>

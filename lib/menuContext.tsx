@@ -35,6 +35,8 @@ interface MenuContextType {
     orders: Order[];
     rushHourMode: boolean;
     rushHourItems: string[];
+    restaurantName: string;
+    tagline: string;
     toggleItemAvailability: (itemId: string) => void;
     updateItemPrice: (itemId: string, newPrice: number) => void;
     addMenuItem: (item: MenuItem) => void;
@@ -50,6 +52,7 @@ interface MenuContextType {
     updateOrderStatus: (orderId: string, status: Order['status'], items?: Order['items']) => void;
     getAvailableItems: () => MenuItem[];
     refreshMenuState: () => void;
+    updateBranding: (name: string, tagline: string) => Promise<void>;
 }
 
 const MenuContext = createContext<MenuContextType | undefined>(undefined);
@@ -79,6 +82,8 @@ export function MenuProvider({ children }: { children: ReactNode }) {
     const [orders, setOrders] = useState<Order[]>([]);
     const [rushHourMode, setRushHourModeState] = useState(false);
     const [rushHourItems, setRushHourItemsState] = useState<string[]>([]);
+    const [restaurantName, setRestaurantName] = useState('Rocky Da Adda');
+    const [tagline, setTagline] = useState('100% Pure Veg');
 
     const loadResource = useCallback(async (resource: string) => {
         switch (resource) {
@@ -98,10 +103,12 @@ export function MenuProvider({ children }: { children: ReactNode }) {
                 break;
             }
             case 'settings': {
-                const settings = await dbGet<{ rushHourMode: boolean; rushHourItems: string[] }>('settings');
+                const settings = await dbGet<{ rushHourMode: boolean; rushHourItems: string[]; restaurantName?: string; tagline?: string }>('settings');
                 if (settings) {
                     setRushHourModeState(settings.rushHourMode);
                     setRushHourItemsState(settings.rushHourItems);
+                    if (settings.restaurantName) setRestaurantName(settings.restaurantName);
+                    if (settings.tagline !== undefined) setTagline(settings.tagline);
                 }
                 break;
             }
@@ -222,6 +229,12 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await dbPost('settings_save', { settings: { rushHourMode, rushHourItems: itemIds } });
     }, [rushHourMode]);
 
+    const updateBranding = useCallback(async (name: string, tl: string) => {
+        setRestaurantName(name);
+        setTagline(tl);
+        await dbPost('settings_save', { settings: { rushHourMode, rushHourItems, restaurantName: name, tagline: tl } });
+    }, [rushHourMode, rushHourItems]);
+
     // ── Orders ────────────────────────────────────────────────────────────
 
     const addOrder = useCallback(async (orderData: Omit<Order, 'status'>) => {
@@ -244,12 +257,13 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         <MenuContext.Provider value={{
             menuItems, categories, orders,
             rushHourMode, rushHourItems,
+            restaurantName, tagline,
             toggleItemAvailability, updateItemPrice,
             addMenuItem, updateMenuItem, deleteMenuItem,
             addCategory, updateCategory, deleteCategory,
             setRushHourMode, toggleRushHourItem, setRushHourItems,
             addOrder, updateOrderStatus,
-            getAvailableItems, refreshMenuState,
+            getAvailableItems, refreshMenuState, updateBranding,
         }}>
             {children}
         </MenuContext.Provider>

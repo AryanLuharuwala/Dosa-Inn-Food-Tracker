@@ -1,8 +1,14 @@
+const path = require('path');
+const isWin = process.platform === 'win32';
+
+// On Windows, .bin executables have a .cmd extension
+const nextBin = path.join(__dirname, 'node_modules', '.bin', isWin ? 'next.cmd' : 'next');
+
 module.exports = {
     apps: [
         {
             name: 'dosa-inn-web',
-            script: 'node_modules/.bin/next',
+            script: nextBin,
             args: 'start',
             cwd: __dirname,
             instances: 1,
@@ -13,14 +19,14 @@ module.exports = {
                 NODE_ENV: 'production',
                 PORT: 3000,
             },
-            error_file: 'logs/web-error.log',
-            out_file: 'logs/web-out.log',
+            error_file: path.join(__dirname, 'logs', 'web-error.log'),
+            out_file: path.join(__dirname, 'logs', 'web-out.log'),
             log_date_format: 'YYYY-MM-DD HH:mm:ss',
         },
         {
             name: 'dosa-inn-whatsapp',
-            script: 'server.js',
-            cwd: __dirname + '/whatsapp-service',
+            script: path.join(__dirname, 'whatsapp-service', 'server.js'),
+            cwd: path.join(__dirname, 'whatsapp-service'),
             instances: 1,
             autorestart: true,
             watch: false,
@@ -29,8 +35,8 @@ module.exports = {
                 NODE_ENV: 'production',
                 WA_SERVICE_PORT: 3478,
             },
-            error_file: '../logs/wa-error.log',
-            out_file: '../logs/wa-out.log',
+            error_file: path.join(__dirname, 'logs', 'wa-error.log'),
+            out_file: path.join(__dirname, 'logs', 'wa-out.log'),
             log_date_format: 'YYYY-MM-DD HH:mm:ss',
         },
     ],
