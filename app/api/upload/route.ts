@@ -32,7 +32,10 @@ export async function POST(req: NextRequest) {
 
     const blob = container.getBlockBlobClient(safeName);
     await blob.upload(buffer, buffer.length, {
-        blobHTTPHeaders: { blobContentType: file.type },
+        blobHTTPHeaders: {
+            blobContentType: file.type,
+            blobCacheControl: 'public, max-age=31536000, immutable',
+        },
     });
 
     return NextResponse.json({ url: blob.url });

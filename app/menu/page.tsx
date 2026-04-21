@@ -136,6 +136,8 @@ export default function MenuPage() {
                                             src={item.image}
                                             alt={item.name}
                                             className={styles.itemImageReal}
+                                            loading="lazy"
+                                            decoding="async"
                                         />
                                     ) : (
                                         <div className={styles.itemImage}>
