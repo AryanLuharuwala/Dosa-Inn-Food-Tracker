@@ -39,64 +39,67 @@ export async function GET(req: NextRequest) {
     const orderId = req.nextUrl.searchParams.get('orderId');
     const isAdmin = isAdminRequest(req);
 
-    switch (resource) {
-        case 'menu_items':
-            return NextResponse.json(await getMenuItems());
+    try {
+        switch (resource) {
+            case 'menu_items':
+                return NextResponse.json(await getMenuItems());
 
-        case 'categories':
-            return NextResponse.json(await getCategories());
+            case 'categories':
+                return NextResponse.json(await getCategories());
 
-        case 'orders': {
-            const orders = await getOrders();
-
-            if (isAdmin) return NextResponse.json(orders);
-
-            if (!tokenId) return NextResponse.json({ error: 'tokenId required' }, { status: 400 });
-            const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
-            const filtered = orders.filter(o =>
-                o.tokenId === tokenId && new Date(o.timestamp).getTime() > twoHoursAgo
-            );
-            if (orderId) return NextResponse.json(filtered.filter(o => o.orderId === orderId));
-            return NextResponse.json(filtered);
-        }
-
-        case 'active_tokens': {
-            const orders = await getOrders();
-            return NextResponse.json(orders.filter(o => o.status !== 'delivered').map(o => o.tokenNumber));
-        }
-
-        case 'settings':
-            if (!isAdmin) return deny();
-            return NextResponse.json(await getSettings());
-
-        case 'chefs':
-            return NextResponse.json(await getChefs());
-
-        case 'chef_categories':
-            return NextResponse.json(await getChefCategories());
-
-        case 'export': {
-            if (!isAdmin) return deny();
-            const format = req.nextUrl.searchParams.get('format') ?? 'json';
-            const [orders, menu_items, categories, chefs, settings] = await Promise.all([
-                getOrders(), getMenuItems(), getCategories(), getChefs(), getSettings(),
-            ]);
-            const payload = { orders, menu_items, categories, chefs, settings, exported_at: new Date().toISOString() };
-            if (format === 'csv') {
-                const rows = orders as unknown as Record<string, unknown>[];
-                if (!rows.length) return new Response(
-                    'orderId,tokenNumber,orderType,status,totalAmount,customerName,customerPhone,createdAt\n',
-                    { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } }
+            case 'orders': {
+                const orders = await getOrders();
+                if (isAdmin) return NextResponse.json(orders);
+                if (!tokenId) return NextResponse.json({ error: 'tokenId required' }, { status: 400 });
+                const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+                const filtered = orders.filter(o =>
+                    o.tokenId === tokenId && new Date(o.timestamp).getTime() > twoHoursAgo
                 );
-                const keys = ['orderId', 'tokenNumber', 'orderType', 'status', 'totalAmount', 'customerName', 'customerPhone', 'timestamp'];
-                const csv = [keys.join(','), ...rows.map(o => keys.map(k => JSON.stringify(o[k] ?? '')).join(','))].join('\n');
-                return new Response(csv, { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } });
+                if (orderId) return NextResponse.json(filtered.filter(o => o.orderId === orderId));
+                return NextResponse.json(filtered);
             }
-            return NextResponse.json(payload);
-        }
 
-        default:
-            return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
+            case 'active_tokens': {
+                const orders = await getOrders();
+                return NextResponse.json(orders.filter(o => o.status !== 'delivered').map(o => o.tokenNumber));
+            }
+
+            case 'settings':
+                if (!isAdmin) return deny();
+                return NextResponse.json(await getSettings());
+
+            case 'chefs':
+                return NextResponse.json(await getChefs());
+
+            case 'chef_categories':
+                return NextResponse.json(await getChefCategories());
+
+            case 'export': {
+                if (!isAdmin) return deny();
+                const format = req.nextUrl.searchParams.get('format') ?? 'json';
+                const [orders, menu_items, categories, chefs, settings] = await Promise.all([
+                    getOrders(), getMenuItems(), getCategories(), getChefs(), getSettings(),
+                ]);
+                const payload = { orders, menu_items, categories, chefs, settings, exported_at: new Date().toISOString() };
+                if (format === 'csv') {
+                    const rows = orders as unknown as Record<string, unknown>[];
+                    if (!rows.length) return new Response(
+                        'orderId,tokenNumber,orderType,status,totalAmount,customerName,customerPhone,createdAt\n',
+                        { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } }
+                    );
+                    const keys = ['orderId', 'tokenNumber', 'orderType', 'status', 'totalAmount', 'customerName', 'customerPhone', 'timestamp'];
+                    const csv = [keys.join(','), ...rows.map(o => keys.map(k => JSON.stringify(o[k] ?? '')).join(','))].join('\n');
+                    return new Response(csv, { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders.csv"' } });
+                }
+                return NextResponse.json(payload);
+            }
+
+            default:
+                return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
+        }
+    } catch (err) {
+        console.error('[GET /api/db]', resource, err);
+        return NextResponse.json({ error: String(err) }, { status: 500 });
     }
 }
 

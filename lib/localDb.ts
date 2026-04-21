@@ -30,7 +30,7 @@ export async function getMenuItems() {
     }
 
     return docs.map(d => ({
-        id: d.id as string,
+        id: String(d._id ?? d.id),
         name: d.name as string,
         description: d.description as string,
         price: d.price as number,
@@ -70,15 +70,18 @@ export async function saveMenuItems(items: unknown[]) {
 
 export async function updateMenuItemFields(id: string, updates: Record<string, unknown>) {
     const db = await getDb();
-    await db.collection('menu_items').updateOne(
-        { _id: id as unknown as import('mongodb').ObjectId },
+    const res = await db.collection('menu_items').updateOne(
+        { $or: [{ _id: id as unknown as import('mongodb').ObjectId }, { id }] },
         { $set: { ...updates, updatedAt: new Date() } }
     );
+    console.log(`[updateMenuItemFields] id=${id} matched=${res.matchedCount} modified=${res.modifiedCount}`);
 }
 
 export async function deleteMenuItemById(id: string) {
     const db = await getDb();
-    await db.collection('menu_items').deleteOne({ _id: id as unknown as import('mongodb').ObjectId });
+    await db.collection('menu_items').deleteOne({
+        $or: [{ _id: id as unknown as import('mongodb').ObjectId }, { id }],
+    });
 }
 
 // ── Categories ─────────────────────────────────────────────────────────────────
@@ -93,7 +96,7 @@ export async function getCategories() {
     }
 
     return docs.map(d => ({
-        id: d.id as string,
+        id: String(d._id ?? d.id),
         name: d.name as string,
         tagline: d.tagline as string | undefined,
         icon: d.icon as string,

@@ -26,6 +26,12 @@ export async function getDb(): Promise<Db> {
     if (globalThis.__mongoConnecting) return globalThis.__mongoConnecting;
 
     globalThis.__mongoConnecting = (async () => {
+        if (!uri) {
+            console.error('[db] MONGO_URL is not set!');
+            throw new Error('MONGO_URL is not set');
+        }
+        console.log(`[db] connecting to MongoDB, db=${dbName}, uri host=${uri.replace(/\/\/[^@]+@/, '//***@').split('?')[0]}`);
+
         const client = new MongoClient(uri, {
             tls: true,
             tlsAllowInvalidCertificates: false,
@@ -36,10 +42,16 @@ export async function getDb(): Promise<Db> {
             serverSelectionTimeoutMS: 10_000,
         });
 
-        await client.connect();
-        const db = client.db(dbName);
+        try {
+            await client.connect();
+            console.log('[db] connected OK');
+        } catch (e) {
+            console.error('[db] connect failed:', (e as Error).message);
+            globalThis.__mongoConnecting = undefined;
+            throw e;
+        }
 
-        // Create indexes (no-op if they already exist)
+        const db = client.db(dbName);
         await ensureIndexes(db).catch(e => console.error('[db] ensureIndexes failed:', e.message));
 
         globalThis.__mongoClient = client;
