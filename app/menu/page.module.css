@@ -142,6 +142,9 @@
     box-shadow: var(--shadow-sm);
     cursor: pointer;
     transition: all var(--transition-fast);
+    /* Skip painting/layout for cards far off-screen — keeps the floating cart responsive */
+    content-visibility: auto;
+    contain-intrinsic-size: 280px 320px;
 }
 
 .itemCard:hover {

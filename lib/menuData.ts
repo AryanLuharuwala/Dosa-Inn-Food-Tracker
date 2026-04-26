@@ -20,6 +20,9 @@ export interface MenuItem {
     price: number;
     categoryId: string;
     tags?: ('bestSeller' | 'readyFast')[];
+    /** References shared ModifierGroups. addOns/extras below are server-resolved
+     *  from these IDs at read time so cart/checkout code stays unchanged. */
+    modifierGroupIds?: string[];
     addOns?: AddOn[];
     extras?: Extra[];
     isAvailable: boolean;

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import Header from '@/components/Header';
 import ItemSheet from '@/components/ItemSheet';
 import { MenuItem } from '@/lib/menuData';
@@ -123,7 +124,7 @@ export default function MenuPage() {
                     </div>
                 ) : (
                     <div className={styles.itemsGrid}>
-                        {filteredItems.map(item => (
+                        {filteredItems.map((item, index) => (
                             <div
                                 key={item.id}
                                 className={styles.itemCard}
@@ -132,12 +133,17 @@ export default function MenuPage() {
                                 {/* Item Image with Veg Badge */}
                                 <div className={styles.itemImageWrapper}>
                                     {item.image ? (
-                                        <img
+                                        <Image
                                             src={item.image}
                                             alt={item.name}
                                             className={styles.itemImageReal}
-                                            loading="lazy"
-                                            decoding="async"
+                                            width={300}
+                                            height={300}
+                                            sizes="(max-width: 480px) 50vw, 240px"
+                                            loading={index < 4 ? 'eager' : 'lazy'}
+                                            priority={index < 2}
+                                            quality={75}
+                                            unoptimized={false}
                                         />
                                     ) : (
                                         <div className={styles.itemImage}>

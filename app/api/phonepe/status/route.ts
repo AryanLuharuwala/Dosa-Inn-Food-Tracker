@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
         let paymentToken: string | undefined;
         if (data.state === 'COMPLETED') {
             const amountRupees = (data.amount as number) / 100;
-            paymentToken = issuePaymentToken({ merchantOrderId: orderId, amountRupees, visitorId });
+            paymentToken = await issuePaymentToken({ merchantOrderId: orderId, amountRupees, visitorId });
         }
 
         return NextResponse.json({

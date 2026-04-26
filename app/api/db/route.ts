@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
     getMenuItems, saveMenuItems, updateMenuItemFields, deleteMenuItemById,
     getCategories, saveCategories,
+    getModifierGroups, upsertModifierGroup, deleteModifierGroupById,
     getOrders, appendOrder, updateOrderStatus as dbUpdateOrderStatus,
+    findOrderByMerchantOrderId,
     getSettings, saveSettings,
     getChefs, saveChefs,
     getChefCategories, saveChefCategories,
     logCancellation, logCartAbandonment, logPayment,
 } from '@/lib/localDb';
-import type { Order, Chef, ChefCategory } from '@/lib/localDb';
+import type { Order, Chef, ChefCategory, ModifierGroup } from '@/lib/localDb';
 import type { MenuItem } from '@/lib/menuData';
 import { emit } from '@/lib/serverEvents';
 import { sendWhatsApp, formatOrderMessage } from '@/lib/whatsapp';
@@ -18,6 +20,7 @@ import { consumePaymentToken } from '@/lib/paymentTokens';
 const ADMIN_ONLY = new Set([
     'menu_update_item', 'menu_add_item', 'menu_delete_item',
     'category_add', 'category_update', 'category_delete',
+    'modifier_group_upsert', 'modifier_group_delete',
     'order_status',
     'settings_save',
     'chef_upsert', 'chef_delete', 'chef_categories_set',
@@ -47,6 +50,9 @@ export async function GET(req: NextRequest) {
             case 'categories':
                 return NextResponse.json(await getCategories());
 
+            case 'modifier_groups':
+                return NextResponse.json(await getModifierGroups());
+
             case 'orders': {
                 const orders = await getOrders();
                 if (isAdmin) return NextResponse.json(orders);
@@ -62,6 +68,21 @@ export async function GET(req: NextRequest) {
             case 'active_tokens': {
                 const orders = await getOrders();
                 return NextResponse.json(orders.filter(o => o.status !== 'delivered').map(o => o.tokenNumber));
+            }
+
+            case 'order_by_merchant': {
+                const merchantOrderId = req.nextUrl.searchParams.get('merchantOrderId');
+                if (!merchantOrderId) return NextResponse.json({ error: 'merchantOrderId required' }, { status: 400 });
+                const order = await findOrderByMerchantOrderId(merchantOrderId);
+                if (!order) return NextResponse.json({ order: null });
+                // Return minimal fields needed for cross-device recovery
+                return NextResponse.json({
+                    order: {
+                        orderId: order.orderId,
+                        tokenNumber: order.tokenNumber,
+                        status: order.status,
+                    },
+                });
             }
 
             case 'settings':
@@ -163,12 +184,52 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: true });
         }
 
+        // ── Modifier groups (admin only) ──────────────────────────────────────
+
+        case 'modifier_group_upsert': {
+            const { group } = body as { group: ModifierGroup };
+            await upsertModifierGroup(group);
+            emit('menu', 'modifier_groups');
+            // Items resolve modifiers via groups, so menu_items effectively changed
+            emit('menu', 'menu_items');
+            return NextResponse.json({ ok: true });
+        }
+
+        case 'modifier_group_delete': {
+            const { id } = body as { id: string };
+            await deleteModifierGroupById(id);
+            emit('menu', 'modifier_groups');
+            emit('menu', 'menu_items');
+            return NextResponse.json({ ok: true });
+        }
+
         // ── Orders ────────────────────────────────────────────────────────────
 
         case 'order_add': {
-            const { order, paymentToken } = body as { order: Order; paymentToken?: string };
+            const { order, paymentToken, merchantOrderId } = body as {
+                order: Order; paymentToken?: string; merchantOrderId?: string;
+            };
+
+            // Idempotency: if an order already exists for this merchantOrderId
+            // (another device/tab placed it first), return its orderId. No token
+            // consumption — the winning request already consumed it.
+            if (merchantOrderId) {
+                const existing = await findOrderByMerchantOrderId(merchantOrderId);
+                if (existing) {
+                    return NextResponse.json({ ok: true, orderId: existing.orderId, duplicate: true });
+                }
+                order.merchantOrderId = merchantOrderId;
+            }
 
             if (!paymentToken || !await consumePaymentToken(paymentToken, order.totalAmount)) {
+                // Token already consumed (by another device winning the race) and
+                // the order exists under that merchantOrderId — return it.
+                if (merchantOrderId) {
+                    const existing = await findOrderByMerchantOrderId(merchantOrderId);
+                    if (existing) {
+                        return NextResponse.json({ ok: true, orderId: existing.orderId, duplicate: true });
+                    }
+                }
                 return NextResponse.json({ error: 'Invalid or expired payment token' }, { status: 403 });
             }
 

@@ -4,6 +4,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link';
 import { useMenu, Order } from '@/lib/menuContext';
 import { MenuItem } from '@/lib/menuData';
+import PricingTable from '@/components/pricing/PricingTable';
 import styles from './page.module.css';
 
 // List of available menu images (from /public/menu-images/)
@@ -31,58 +32,6 @@ const AVAILABLE_IMAGES = [
     'veg-stir-fried-maggi.png',
 ];
 
-// Extracted to avoid re-creating inline functions in the map loop
-function AdminMenuItem({ item, editingPrice, newPrice, setNewPrice, onToggle, onPriceEdit, onPriceSave, onEdit, onDelete, styles }: {
-    item: MenuItem;
-    editingPrice: string | null;
-    newPrice: string;
-    setNewPrice: (v: string) => void;
-    onToggle: (id: string) => void;
-    onPriceEdit: (id: string, price: number) => void;
-    onPriceSave: (id: string) => void;
-    onEdit: (item: MenuItem) => void;
-    onDelete: (id: string) => void;
-    styles: Record<string, string>;
-}) {
-    return (
-        <div className={`${styles.menuItem} ${!item.isAvailable ? styles.menuItemDisabled : ''}`}>
-            <div className={styles.menuItemLeft}>
-                <button className={`${styles.toggle} ${item.isAvailable ? styles.toggleActive : ''}`} onClick={() => onToggle(item.id)} aria-label={item.isAvailable ? 'Disable' : 'Enable'}>
-                    <div className={styles.toggleThumb} />
-                </button>
-            </div>
-            {item.image && <img src={item.image} alt={item.name} className={styles.menuItemImage} />}
-            <div className={styles.menuItemInfo}>
-                <div className={styles.menuItemHeader}>
-                    <span className={styles.menuItemName}>{item.name}</span>
-                    {item.tags?.includes('bestSeller') && <span className={styles.tagBestseller}>Best</span>}
-                    {item.tags?.includes('readyFast') && <span className={styles.tagFast}>Fast</span>}
-                </div>
-            </div>
-            <div className={styles.menuItemActions}>
-                <div className={styles.menuItemPrice}>
-                    {editingPrice === item.id ? (
-                        <div className={styles.priceEdit}>
-                            <input type="number" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} className={styles.priceInput} autoFocus onKeyDown={(e) => e.key === 'Enter' && onPriceSave(item.id)} />
-                            <button className={styles.priceSaveBtn} onClick={() => onPriceSave(item.id)}>✓</button>
-                        </div>
-                    ) : (
-                        <button className={styles.priceBtn} onClick={() => onPriceEdit(item.id, item.price)}>₹{item.price}</button>
-                    )}
-                </div>
-                <div className={styles.itemActionBtns}>
-                    <button className={styles.editBtn} onClick={() => onEdit(item)} aria-label="Edit">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                    </button>
-                    <button className={styles.deleteBtn} onClick={() => onDelete(item.id)} aria-label="Delete">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 interface ItemFormData {
     name: string;
     description: string;
@@ -108,17 +57,19 @@ export default function AdminPage() {
     const {
         menuItems,
         categories,
+        modifierGroups,
         orders,
         rushHourMode,
         rushHourItems,
         toggleItemAvailability,
-        updateItemPrice,
         addMenuItem,
         updateMenuItem,
         deleteMenuItem,
         addCategory,
         updateCategory,
         deleteCategory,
+        upsertModifierGroup,
+        deleteModifierGroup,
         setRushHourMode,
         toggleRushHourItem,
         setRushHourItems,
@@ -129,12 +80,7 @@ export default function AdminPage() {
     } = useMenu();
 
     const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'rush-hour' | 'whatsapp'>('orders');
-    const [menuSubTab, setMenuSubTab] = useState<'items' | 'categories'>('items');
-    const [selectedCategory, setSelectedCategory] = useState('all');
-    const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
-    const [editingPrice, setEditingPrice] = useState<string | null>(null);
-    const [newPrice, setNewPrice] = useState('');
-    const [menuSearch, setMenuSearch] = useState('');
+    const [menuSubTab, setMenuSubTab] = useState<'items' | 'categories' | 'modifiers'>('items');
     const [rushHourSearch, setRushHourSearch] = useState('');
 
     // Category CRUD state
@@ -142,6 +88,17 @@ export default function AdminPage() {
     const [editingCatId, setEditingCatId] = useState<string | null>(null);
     const [catForm, setCatForm] = useState({ name: '', icon: '', tagline: '' });
     const [deletingCatId, setDeletingCatId] = useState<string | null>(null);
+
+    // Modifier group CRUD state
+    type ModifierGroupForm = {
+        id: string | null;
+        name: string;
+        type: 'addOn' | 'extra';
+        modifiers: Array<{ id: string; name: string; price: string }>;
+    };
+    const [showMgModal, setShowMgModal] = useState(false);
+    const [mgForm, setMgForm] = useState<ModifierGroupForm>({ id: null, name: '', type: 'addOn', modifiers: [] });
+    const [deletingMgId, setDeletingMgId] = useState<string | null>(null);
 
     // Modal state
     const [showModal, setShowModal] = useState(false);
@@ -352,25 +309,6 @@ export default function AdminPage() {
         }
     };
 
-    // Filter menu items based on category and search
-    const filteredMenuItems = useMemo(() => {
-        let items = menuItems;
-
-        if (selectedCategory !== 'all') {
-            items = items.filter(item => item.categoryId === selectedCategory);
-        }
-
-        if (menuSearch.trim()) {
-            const query = menuSearch.toLowerCase();
-            items = items.filter(item =>
-                item.name.toLowerCase().includes(query) ||
-                item.description.toLowerCase().includes(query)
-            );
-        }
-
-        return items;
-    }, [menuItems, selectedCategory, menuSearch]);
-
     // Filter rush hour items
     const filteredRushHourItems = useMemo(() => {
         let items = menuItems;
@@ -384,20 +322,6 @@ export default function AdminPage() {
 
         return items;
     }, [menuItems, rushHourSearch]);
-
-    const handlePriceEdit = (itemId: string, currentPrice: number) => {
-        setEditingPrice(itemId);
-        setNewPrice(currentPrice.toString());
-    };
-
-    const handlePriceSave = (itemId: string) => {
-        const price = parseInt(newPrice);
-        if (!isNaN(price) && price > 0) {
-            updateItemPrice(itemId, price);
-        }
-        setEditingPrice(null);
-        setNewPrice('');
-    };
 
     const handleSelectSlowItems = () => {
         const slowItems = menuItems
@@ -510,15 +434,6 @@ export default function AdminPage() {
         setDeletingItemId(null);
     };
 
-    const toggleCategoryCollapse = (catId: string) => {
-        setCollapsedCategories(prev => {
-            const next = new Set(prev);
-            if (next.has(catId)) next.delete(catId);
-            else next.add(catId);
-            return next;
-        });
-    };
-
     const openAddCatModal = () => {
         setEditingCatId(null);
         setCatForm({ name: '', icon: '🍽️', tagline: '' });
@@ -543,6 +458,63 @@ export default function AdminPage() {
         setShowCatModal(false);
         setEditingCatId(null);
     };
+
+    // ── Modifier group handlers ───────────────────────────────────────────────
+
+    const openAddModifierGroupModal = () => {
+        setMgForm({ id: null, name: '', type: 'addOn', modifiers: [] });
+        setShowMgModal(true);
+    };
+
+    const openEditModifierGroupModal = (group: import('@/lib/menuContext').ModifierGroup) => {
+        setMgForm({
+            id: group.id,
+            name: group.name,
+            type: group.type,
+            modifiers: group.modifiers.map(m => ({ id: m.id, name: m.name, price: String(m.price) })),
+        });
+        setShowMgModal(true);
+    };
+
+    const handleMgFormSubmit = async () => {
+        if (!mgForm.name.trim()) return;
+        const id = mgForm.id ?? `mg_${mgForm.type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const modifiers = mgForm.modifiers
+            .map(m => ({
+                id: m.id || `m_${Math.random().toString(36).slice(2, 8)}`,
+                name: m.name.trim(),
+                price: parseInt(m.price, 10),
+            }))
+            .filter(m => m.name && !isNaN(m.price) && m.price >= 0);
+        await upsertModifierGroup({ id, name: mgForm.name.trim(), type: mgForm.type, modifiers });
+        setShowMgModal(false);
+    };
+
+    const mgFormAddRow = () => {
+        setMgForm(prev => ({
+            ...prev,
+            modifiers: [...prev.modifiers, { id: '', name: '', price: '' }],
+        }));
+    };
+
+    const mgFormUpdateRow = (idx: number, field: 'name' | 'price', val: string) => {
+        setMgForm(prev => ({
+            ...prev,
+            modifiers: prev.modifiers.map((m, i) => i === idx ? { ...m, [field]: val } : m),
+        }));
+    };
+
+    const mgFormRemoveRow = (idx: number) => {
+        setMgForm(prev => ({
+            ...prev,
+            modifiers: prev.modifiers.filter((_, i) => i !== idx),
+        }));
+    };
+
+    /** Items that reference a given group — used in the Modifiers list and as a delete safety check. */
+    const itemsUsingGroup = useCallback((groupId: string) => {
+        return menuItems.filter(i => i.modifierGroupIds?.includes(groupId));
+    }, [menuItems]);
 
     // Calculate analytics
     const todayOrders = orders.filter(o => {
@@ -822,15 +794,22 @@ export default function AdminPage() {
                                     <h2 className={styles.sectionTitle}>Menu Management</h2>
                                     <p className={styles.menuSubtitle}>{activeItems} active • {disabledItems} hidden</p>
                                 </div>
-                                {menuSubTab === 'items' ? (
+                                {menuSubTab === 'items' && (
                                     <button className={styles.addItemBtn} onClick={openAddModal}>
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                                         Add Item
                                     </button>
-                                ) : (
+                                )}
+                                {menuSubTab === 'categories' && (
                                     <button className={styles.addItemBtn} onClick={openAddCatModal}>
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                                         Add Category
+                                    </button>
+                                )}
+                                {menuSubTab === 'modifiers' && (
+                                    <button className={styles.addItemBtn} onClick={openAddModifierGroupModal}>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+                                        Add Group
                                     </button>
                                 )}
                             </div>
@@ -844,76 +823,20 @@ export default function AdminPage() {
                                     className={`${styles.menuSubTab} ${menuSubTab === 'categories' ? styles.menuSubTabActive : ''}`}
                                     onClick={() => setMenuSubTab('categories')}
                                 >Categories</button>
+                                <button
+                                    className={`${styles.menuSubTab} ${menuSubTab === 'modifiers' ? styles.menuSubTabActive : ''}`}
+                                    onClick={() => setMenuSubTab('modifiers')}
+                                >Modifiers</button>
                             </div>
                         </div>
 
                         {menuSubTab === 'items' && (
-                            <>
-                                {/* Search */}
-                                <div className={styles.searchBar}>
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-                                    <input type="text" placeholder="Search menu items..." value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} className={styles.searchInput} />
-                                    {menuSearch && <button className={styles.clearBtn} onClick={() => setMenuSearch('')}>✕</button>}
-                                </div>
-
-                                {/* Grouped by category */}
-                                <div className={styles.menuList}>
-                                    {menuSearch.trim() ? (
-                                        // Flat list when searching
-                                        filteredMenuItems.length === 0 ? (
-                                            <div className={styles.noResults}>No items found</div>
-                                        ) : filteredMenuItems.map(item => (
-                                            <AdminMenuItem
-                                                key={item.id}
-                                                item={item}
-                                                editingPrice={editingPrice}
-                                                newPrice={newPrice}
-                                                setNewPrice={setNewPrice}
-                                                onToggle={toggleItemAvailability}
-                                                onPriceEdit={handlePriceEdit}
-                                                onPriceSave={handlePriceSave}
-                                                onEdit={openEditModal}
-                                                onDelete={handleDeleteConfirm}
-                                                styles={styles}
-                                            />
-                                        ))
-                                    ) : (
-                                        // Grouped by category
-                                        categories.map(cat => {
-                                            const catItems = menuItems.filter(i => i.categoryId === cat.id);
-                                            if (catItems.length === 0) return null;
-                                            const collapsed = collapsedCategories.has(cat.id);
-                                            return (
-                                                <div key={cat.id} className={styles.categoryGroup}>
-                                                    <div className={styles.categoryGroupHeader} onClick={() => toggleCategoryCollapse(cat.id)}>
-                                                        <span className={styles.categoryGroupIcon}>{cat.icon}</span>
-                                                        <span className={styles.categoryGroupName}>{cat.name}</span>
-                                                        <span className={styles.categoryGroupCount}>{catItems.length}</span>
-                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: 'auto', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
-                                                            <path d="M6 9l6 6 6-6" />
-                                                        </svg>
-                                                    </div>
-                                                    {!collapsed && catItems.map(item => (
-                                                        <AdminMenuItem
-                                                            key={item.id}
-                                                            item={item}
-                                                            editingPrice={editingPrice}
-                                                            newPrice={newPrice}
-                                                            setNewPrice={setNewPrice}
-                                                            onToggle={toggleItemAvailability}
-                                                            onPriceEdit={handlePriceEdit}
-                                                            onPriceSave={handlePriceSave}
-                                                            onEdit={openEditModal}
-                                                            onDelete={handleDeleteConfirm}
-                                                            styles={styles}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            );
-                                        })
-                                    )}
-                                </div>
-                            </>
+                            <PricingTable
+                                showHeader={false}
+                                onToggle={toggleItemAvailability}
+                                onEdit={openEditModal}
+                                onDelete={handleDeleteConfirm}
+                            />
                         )}
 
                         {menuSubTab === 'categories' && (
@@ -933,6 +856,51 @@ export default function AdminPage() {
                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                                                 </button>
                                                 <button className={styles.deleteBtn} onClick={() => setDeletingCatId(cat.id)} aria-label="Delete category" disabled={itemCount > 0} title={itemCount > 0 ? 'Move items out first' : 'Delete'}>
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {menuSubTab === 'modifiers' && (
+                            <div className={styles.menuList}>
+                                {modifierGroups.length === 0 && (
+                                    <p style={{ padding: 24, color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                                        No modifier groups yet. Click <strong>Add Group</strong> to create one (e.g. &quot;Paratha add-ons&quot;), then assign it to items in the Items tab.
+                                    </p>
+                                )}
+                                {modifierGroups.map(group => {
+                                    const usedBy = itemsUsingGroup(group.id);
+                                    return (
+                                        <div key={group.id} className={styles.catManageRow}>
+                                            <span className={styles.catManageIcon}>{group.type === 'addOn' ? '➕' : '🍽️'}</span>
+                                            <div className={styles.catManageInfo}>
+                                                <span className={styles.catManageName}>
+                                                    {group.name}
+                                                    <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                                                        {group.type === 'addOn' ? 'Add-on group' : 'Extra group'}
+                                                    </span>
+                                                </span>
+                                                <span className={styles.catManageTagline}>
+                                                    {group.modifiers.length === 0 ? 'No modifiers' :
+                                                        group.modifiers.map(m => `${m.name} ₹${m.price}`).join(' · ')}
+                                                </span>
+                                                <span className={styles.catManageCount}>
+                                                    Used by {usedBy.length} item{usedBy.length !== 1 ? 's' : ''}
+                                                </span>
+                                            </div>
+                                            <div className={styles.itemActionBtns}>
+                                                <button className={styles.editBtn} onClick={() => openEditModifierGroupModal(group)} aria-label="Edit modifier group">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                                </button>
+                                                <button
+                                                    className={styles.deleteBtn}
+                                                    onClick={() => setDeletingMgId(group.id)}
+                                                    aria-label="Delete modifier group"
+                                                >
                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
                                                 </button>
                                             </div>
@@ -1469,6 +1437,130 @@ export default function AdminPage() {
                     </div>
                 </div>
             )}
+
+            {/* Modifier Group Edit Modal */}
+            {showMgModal && (
+                <div className={styles.modalOverlay} onClick={() => setShowMgModal(false)}>
+                    <div className={styles.modal} onClick={e => e.stopPropagation()}>
+                        <div className={styles.modalHeader}>
+                            <h2 className={styles.modalTitle}>{mgForm.id ? 'Edit Modifier Group' : 'New Modifier Group'}</h2>
+                            <button className={styles.modalCloseBtn} onClick={() => setShowMgModal(false)} aria-label="Close">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className={styles.modalBody}>
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>Group name</label>
+                                <input
+                                    type="text"
+                                    className={styles.formInput}
+                                    value={mgForm.name}
+                                    onChange={e => setMgForm(prev => ({ ...prev, name: e.target.value }))}
+                                    placeholder="e.g. Paratha add-ons"
+                                />
+                            </div>
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>Type</label>
+                                <select
+                                    className={styles.formInput}
+                                    value={mgForm.type}
+                                    onChange={e => setMgForm(prev => ({ ...prev, type: e.target.value as 'addOn' | 'extra' }))}
+                                    disabled={!!mgForm.id}
+                                >
+                                    <option value="addOn">Add-on (modifies the item)</option>
+                                    <option value="extra">Extra (sold alongside)</option>
+                                </select>
+                                {mgForm.id && (
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                        Type can&apos;t be changed after creation. Delete and recreate if needed.
+                                    </span>
+                                )}
+                            </div>
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>Modifiers</label>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {mgForm.modifiers.length === 0 && (
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                                            No modifiers yet. Click <strong>+ Add modifier</strong> below.
+                                        </p>
+                                    )}
+                                    {mgForm.modifiers.map((m, idx) => (
+                                        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                            <input
+                                                type="text"
+                                                className={styles.formInput}
+                                                style={{ flex: 1 }}
+                                                value={m.name}
+                                                onChange={e => mgFormUpdateRow(idx, 'name', e.target.value)}
+                                                placeholder="Name (e.g. Butter)"
+                                            />
+                                            <span style={{ color: 'var(--color-text-muted)' }}>₹</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className={styles.formInput}
+                                                style={{ width: 80 }}
+                                                value={m.price}
+                                                onChange={e => mgFormUpdateRow(idx, 'price', e.target.value)}
+                                                placeholder="0"
+                                            />
+                                            <button
+                                                type="button"
+                                                className={styles.deleteBtn}
+                                                onClick={() => mgFormRemoveRow(idx)}
+                                                aria-label="Remove modifier"
+                                                style={{ flexShrink: 0 }}
+                                            >
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <button
+                                        type="button"
+                                        className={styles.modalCancelBtn}
+                                        onClick={mgFormAddRow}
+                                        style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                                    >
+                                        + Add modifier
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div className={styles.modalActions}>
+                            <button className={styles.modalCancelBtn} onClick={() => setShowMgModal(false)}>Cancel</button>
+                            <button className={styles.modalSaveBtn} onClick={handleMgFormSubmit} disabled={!mgForm.name.trim()}>
+                                {mgForm.id ? 'Save Changes' : 'Create Group'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modifier Group Delete Confirmation */}
+            {deletingMgId && (() => {
+                const group = modifierGroups.find(g => g.id === deletingMgId);
+                const usedBy = itemsUsingGroup(deletingMgId);
+                return (
+                    <div className={styles.modalOverlay} onClick={() => setDeletingMgId(null)}>
+                        <div className={styles.deleteModal} onClick={e => e.stopPropagation()}>
+                            <div className={styles.deleteModalIcon}>
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#e53935" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                            </div>
+                            <h3 className={styles.deleteModalTitle}>Delete Modifier Group?</h3>
+                            <p className={styles.deleteModalText}>
+                                Delete <strong>{group?.name}</strong>?
+                                {usedBy.length > 0 && (
+                                    <> It&apos;s currently assigned to <strong>{usedBy.length} item{usedBy.length !== 1 ? 's' : ''}</strong>; they&apos;ll lose these modifiers.</>
+                                )}
+                            </p>
+                            <div className={styles.deleteModalActions}>
+                                <button className={styles.modalCancelBtn} onClick={() => setDeletingMgId(null)}>Keep It</button>
+                                <button className={styles.deleteConfirmBtn} onClick={() => { deleteModifierGroup(deletingMgId); setDeletingMgId(null); }}>Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Delete Confirmation Modal */}
             {

@@ -69,21 +69,43 @@ function PaymentResultPageInner() {
             const res = await fetch('/api/db', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'order_add', order: orderData, paymentToken }),
+                body: JSON.stringify({
+                    action: 'order_add',
+                    order: orderData,
+                    paymentToken,
+                    merchantOrderId,
+                }),
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error((err as { error?: string }).error || 'Failed to place order');
             }
+            // If another device already placed this order, the server returns its orderId
+            const result = await res.json().catch(() => ({} as { orderId?: string; duplicate?: boolean }));
+            const finalId = (result as { orderId?: string }).orderId || orderId;
             // Update local context state so kitchen/admin pages reflect new order
-            addOrder(orderData as Parameters<typeof addOrder>[0]);
-            localStorage.setItem('lastOrder', JSON.stringify(orderData));
+            addOrder({ ...orderData, orderId: finalId } as Parameters<typeof addOrder>[0]);
+            localStorage.setItem('lastOrder', JSON.stringify({ ...orderData, orderId: finalId }));
             localStorage.removeItem('pendingOrder');
             if (pendingData?.merchantOrderId) localStorage.removeItem(`pendingOrder_${pendingData.merchantOrderId}`);
             clearCart();
             playOrderPlaced();
-            setFinalOrderId(orderId);
+            setFinalOrderId(finalId);
             setPayState('success');
+        }
+
+        async function recoverExistingOrder(): Promise<boolean> {
+            // The other device already placed the order — look it up and
+            // navigate instead of showing "order data was lost".
+            const res = await fetch(`/api/db?resource=order_by_merchant&merchantOrderId=${encodeURIComponent(merchantOrderId)}`);
+            if (!res.ok) return false;
+            const { order } = (await res.json()) as { order: { orderId: string } | null };
+            if (!order) return false;
+            localStorage.removeItem('pendingOrder');
+            if (urlOrderId) localStorage.removeItem(`pendingOrder_${urlOrderId}`);
+            setFinalOrderId(order.orderId);
+            setPayState('success');
+            return true;
         }
 
         async function checkStatus(attempt = 0): Promise<void> {
@@ -99,15 +121,25 @@ function PaymentResultPageInner() {
 
             if (data.state === 'COMPLETED') {
                 if (!pendingData) {
-                    setErrorMsg('Payment succeeded but order data was lost. Please contact support with order ID: ' + merchantOrderId);
-                    setPayState('failed');
+                    // No cart data on this device (the other device placed the order).
+                    // Try to recover by looking up the existing order.
+                    const recovered = await recoverExistingOrder();
+                    if (!recovered) {
+                        setErrorMsg('Payment succeeded but order data was lost. Please contact support with order ID: ' + merchantOrderId);
+                        setPayState('failed');
+                    }
                     return;
                 }
                 try {
                     await finaliseOrder(pendingData, data.paymentToken);
                 } catch (err: unknown) {
-                    setErrorMsg((err instanceof Error ? err.message : 'Order placement failed') + ' — payment ref: ' + merchantOrderId);
-                    setPayState('failed');
+                    // If finalise failed because the order already exists elsewhere,
+                    // try to pick it up instead of showing an error.
+                    const recovered = await recoverExistingOrder();
+                    if (!recovered) {
+                        setErrorMsg((err instanceof Error ? err.message : 'Order placement failed') + ' — payment ref: ' + merchantOrderId);
+                        setPayState('failed');
+                    }
                 }
                 return;
             } else if (data.state === 'FAILED') {

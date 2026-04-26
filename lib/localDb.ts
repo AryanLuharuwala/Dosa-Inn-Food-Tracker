@@ -29,24 +29,127 @@ export async function getMenuItems() {
         return getMenuItems();
     }
 
+    // One-time migration: items with inline addOns/extras but no modifierGroupIds
+    // yet get migrated to shared modifier groups. Idempotent — runs at most once
+    // per item.
+    const needsMigration = docs.some(d => !d.modifierGroupIds && ((d.addOns as unknown[])?.length || (d.extras as unknown[])?.length));
+    if (needsMigration) {
+        await migrateInlineModifiersToGroups();
+        return getMenuItems(); // re-fetch with migrated state
+    }
+
     docs.sort((a, b) => {
         const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return ta - tb;
     });
 
-    return docs.map(d => ({
-        id: String(d._id ?? d.id),
-        name: d.name as string,
-        description: d.description as string,
-        price: d.price as number,
-        categoryId: d.categoryId as string,
-        tags: (d.tags as string[]) ?? [],
-        isAvailable: d.isAvailable as boolean,
-        image: d.image as string | undefined,
-        addOns: (d.addOns as unknown[]) ?? [],
-        extras: (d.extras as unknown[]) ?? [],
-    }));
+    // Resolve modifierGroupIds → inline addOns/extras so cart/checkout code is unchanged
+    const groups = await getModifierGroups();
+    const groupMap = new Map(groups.map(g => [g.id, g]));
+
+    return docs.map(d => {
+        const groupIds = (d.modifierGroupIds as string[]) ?? [];
+        const inlineAddOns = (d.addOns as Modifier[]) ?? [];
+        const inlineExtras = (d.extras as Modifier[]) ?? [];
+
+        // Resolve groups + dedupe with any inline (inline takes precedence by id)
+        const resolvedAddOns: Modifier[] = [...inlineAddOns];
+        const resolvedExtras: Modifier[] = [...inlineExtras];
+        const seenIds = new Set([...inlineAddOns, ...inlineExtras].map(m => m.id));
+        for (const gid of groupIds) {
+            const g = groupMap.get(gid);
+            if (!g) continue;
+            for (const m of g.modifiers) {
+                if (seenIds.has(m.id)) continue;
+                seenIds.add(m.id);
+                if (g.type === 'addOn') resolvedAddOns.push(m);
+                else resolvedExtras.push(m);
+            }
+        }
+
+        return {
+            id: String(d._id ?? d.id),
+            name: d.name as string,
+            description: d.description as string,
+            price: d.price as number,
+            categoryId: d.categoryId as string,
+            tags: (d.tags as string[]) ?? [],
+            isAvailable: d.isAvailable as boolean,
+            image: d.image as string | undefined,
+            modifierGroupIds: groupIds,
+            addOns: resolvedAddOns,
+            extras: resolvedExtras,
+        };
+    });
+}
+
+/**
+ * One-time migration: walks every item, dedupes inline addOns/extras by structural
+ * equality (sorted-by-id JSON of {id,name,price}[]), creates a ModifierGroup for
+ * each unique signature, links the item to the group(s), and clears the inline
+ * arrays. Group names are derived from the item's category to keep them readable.
+ */
+async function migrateInlineModifiersToGroups() {
+    const db = await getDb();
+    const items = await db.collection('menu_items').find({}).toArray();
+    const cats = await getCategories();
+    const catName = new Map(cats.map(c => [c.id, c.name]));
+
+    // signature -> { id, type, name, modifiers }
+    const groupBySig = new Map<string, ModifierGroup>();
+    const itemUpdates: Array<{ _id: unknown; groupIds: string[] }> = [];
+
+    function sig(arr: Modifier[]): string {
+        return JSON.stringify([...arr].sort((a, b) => a.id.localeCompare(b.id)).map(m => ({ id: m.id, name: m.name, price: m.price })));
+    }
+
+    function ensureGroup(arr: Modifier[], type: 'addOn' | 'extra', categoryId: string): string | null {
+        if (!arr.length) return null;
+        const s = type + '|' + sig(arr);
+        const existing = groupBySig.get(s);
+        if (existing) return existing.id;
+        const id = `mg_${type}_${Math.random().toString(36).slice(2, 10)}`;
+        const baseName = catName.get(categoryId) ?? 'Items';
+        const g: ModifierGroup = {
+            id,
+            name: `${baseName} — ${type === 'addOn' ? 'Add-ons' : 'Extras'}`,
+            type,
+            modifiers: arr.map(m => ({ id: m.id, name: m.name, price: m.price })),
+        };
+        groupBySig.set(s, g);
+        return id;
+    }
+
+    for (const item of items) {
+        // Skip items already migrated
+        if (item.modifierGroupIds) continue;
+        const inlineAddOns = ((item.addOns as Modifier[]) ?? []).filter(m => m && m.id);
+        const inlineExtras = ((item.extras as Modifier[]) ?? []).filter(m => m && m.id);
+        if (!inlineAddOns.length && !inlineExtras.length) {
+            // Mark as migrated with empty array so we don't re-check
+            itemUpdates.push({ _id: item._id, groupIds: [] });
+            continue;
+        }
+        const ids: string[] = [];
+        const addOnId = ensureGroup(inlineAddOns, 'addOn', item.categoryId as string);
+        const extraId = ensureGroup(inlineExtras, 'extra', item.categoryId as string);
+        if (addOnId) ids.push(addOnId);
+        if (extraId) ids.push(extraId);
+        itemUpdates.push({ _id: item._id, groupIds: ids });
+    }
+
+    // Persist groups
+    for (const g of groupBySig.values()) {
+        await upsertModifierGroup(g);
+    }
+    // Update items: set modifierGroupIds, clear inline arrays
+    for (const u of itemUpdates) {
+        await db.collection('menu_items').updateOne(
+            { _id: u._id as import('mongodb').ObjectId },
+            { $set: { modifierGroupIds: u.groupIds, addOns: [], extras: [], migratedAt: new Date() } }
+        );
+    }
 }
 
 async function seedMenuItemsToDb() {
@@ -88,6 +191,56 @@ export async function deleteMenuItemById(id: string) {
     await db.collection('menu_items').deleteOne({
         $or: [{ _id: id as unknown as import('mongodb').ObjectId }, { id }],
     });
+}
+
+// ── Modifier Groups (shared add-ons & extras) ─────────────────────────────────
+
+export interface Modifier {
+    id: string;
+    name: string;
+    price: number;
+}
+
+export interface ModifierGroup {
+    id: string;
+    name: string;
+    type: 'addOn' | 'extra';
+    modifiers: Modifier[];
+}
+
+export async function getModifierGroups(): Promise<ModifierGroup[]> {
+    const db = await getDb();
+    const docs = await db.collection('modifier_groups').find({}).toArray();
+    return docs.map(d => ({
+        id: String(d._id ?? d.id),
+        name: d.name as string,
+        type: d.type as 'addOn' | 'extra',
+        modifiers: (d.modifiers as Modifier[]) ?? [],
+    }));
+}
+
+export async function upsertModifierGroup(group: ModifierGroup) {
+    const db = await getDb();
+    await db.collection('modifier_groups').updateOne(
+        { _id: group.id as unknown as import('mongodb').ObjectId },
+        {
+            $set: { name: group.name, type: group.type, modifiers: group.modifiers, updatedAt: new Date() },
+            $setOnInsert: { _id: group.id, createdAt: new Date() },
+        },
+        { upsert: true }
+    );
+}
+
+export async function deleteModifierGroupById(id: string) {
+    const db = await getDb();
+    await db.collection('modifier_groups').deleteOne({
+        $or: [{ _id: id as unknown as import('mongodb').ObjectId }, { id }],
+    });
+    // Also unlink from any items that referenced it
+    await db.collection('menu_items').updateMany(
+        { modifierGroupIds: id },
+        { $pull: { modifierGroupIds: id as unknown as never } }
+    );
 }
 
 // ── Categories ─────────────────────────────────────────────────────────────────
@@ -164,6 +317,7 @@ export interface Order {
     status: 'pending' | 'preparing' | 'ready' | 'delivered';
     tokenId?: string;
     phonePeOrderId?: string;
+    merchantOrderId?: string;
     customerPhone?: string;
     customerName?: string;
 }
@@ -182,9 +336,16 @@ function docToOrder(d: Record<string, unknown>): Order {
         status: d.status as Order['status'],
         tokenId: d.tokenId as string | undefined,
         phonePeOrderId: d.phonePeOrderId as string | undefined,
+        merchantOrderId: d.merchantOrderId as string | undefined,
         customerPhone: d.customerPhone as string | undefined,
         customerName: d.customerName as string | undefined,
     };
+}
+
+export async function findOrderByMerchantOrderId(merchantOrderId: string): Promise<Order | null> {
+    const db = await getDb();
+    const doc = await db.collection('orders').findOne({ merchantOrderId });
+    return doc ? docToOrder(doc as unknown as Record<string, unknown>) : null;
 }
 
 export async function getOrders(): Promise<Order[]> {

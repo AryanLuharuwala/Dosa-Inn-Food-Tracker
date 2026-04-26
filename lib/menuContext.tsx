@@ -29,9 +29,23 @@ export interface Order {
     customerName?: string;
 }
 
+export interface Modifier {
+    id: string;
+    name: string;
+    price: number;
+}
+
+export interface ModifierGroup {
+    id: string;
+    name: string;
+    type: 'addOn' | 'extra';
+    modifiers: Modifier[];
+}
+
 interface MenuContextType {
     menuItems: MenuItem[];
     categories: Category[];
+    modifierGroups: ModifierGroup[];
     orders: Order[];
     rushHourMode: boolean;
     rushHourItems: string[];
@@ -45,6 +59,8 @@ interface MenuContextType {
     addCategory: (cat: Category) => void;
     updateCategory: (catId: string, updates: Partial<Category>) => void;
     deleteCategory: (catId: string) => void;
+    upsertModifierGroup: (group: ModifierGroup) => Promise<void>;
+    deleteModifierGroup: (id: string) => Promise<void>;
     setRushHourMode: (mode: boolean) => void;
     toggleRushHourItem: (itemId: string) => void;
     setRushHourItems: (itemIds: string[]) => void;
@@ -79,6 +95,7 @@ async function dbPost(action: string, payload: Record<string, unknown> = {}) {
 export function MenuProvider({ children }: { children: ReactNode }) {
     const [menuItems, setMenuItems] = useState<MenuItem[]>(initialMenuItems);
     const [categories, setCategories] = useState<Category[]>(initialCategories);
+    const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [rushHourMode, setRushHourModeState] = useState(false);
     const [rushHourItems, setRushHourItemsState] = useState<string[]>([]);
@@ -95,6 +112,11 @@ export function MenuProvider({ children }: { children: ReactNode }) {
             case 'categories': {
                 const cats = await dbGet<Category[]>('categories');
                 if (cats && cats.length > 0) setCategories(cats);
+                break;
+            }
+            case 'modifier_groups': {
+                const groups = await dbGet<ModifierGroup[]>('modifier_groups');
+                if (groups) setModifierGroups(groups);
                 break;
             }
             case 'orders': {
@@ -119,6 +141,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await Promise.all([
             loadResource('menu_items'),
             loadResource('categories'),
+            loadResource('modifier_groups'),
             loadResource('orders'),
             loadResource('settings'),
         ]);
@@ -235,6 +258,30 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await dbPost('settings_save', { settings: { rushHourMode, rushHourItems, restaurantName: name, tagline: tl } });
     }, [rushHourMode, rushHourItems]);
 
+    // ── Modifier groups ───────────────────────────────────────────────────
+
+    const upsertModifierGroup = useCallback(async (group: ModifierGroup) => {
+        setModifierGroups(prev => {
+            const idx = prev.findIndex(g => g.id === group.id);
+            if (idx === -1) return [...prev, group];
+            const next = [...prev];
+            next[idx] = group;
+            return next;
+        });
+        await dbPost('modifier_group_upsert', { group });
+    }, []);
+
+    const deleteModifierGroup = useCallback(async (id: string) => {
+        setModifierGroups(prev => prev.filter(g => g.id !== id));
+        // Strip from any items locally
+        setMenuItems(prev => prev.map(i =>
+            i.modifierGroupIds?.includes(id)
+                ? { ...i, modifierGroupIds: i.modifierGroupIds.filter(g => g !== id) }
+                : i
+        ));
+        await dbPost('modifier_group_delete', { id });
+    }, []);
+
     // ── Orders ────────────────────────────────────────────────────────────
 
     const addOrder = useCallback(async (orderData: Omit<Order, 'status'>) => {
@@ -255,12 +302,13 @@ export function MenuProvider({ children }: { children: ReactNode }) {
 
     return (
         <MenuContext.Provider value={{
-            menuItems, categories, orders,
+            menuItems, categories, modifierGroups, orders,
             rushHourMode, rushHourItems,
             restaurantName, tagline,
             toggleItemAvailability, updateItemPrice,
             addMenuItem, updateMenuItem, deleteMenuItem,
             addCategory, updateCategory, deleteCategory,
+            upsertModifierGroup, deleteModifierGroup,
             setRushHourMode, toggleRushHourItem, setRushHourItems,
             addOrder, updateOrderStatus,
             getAvailableItems, refreshMenuState, updateBranding,
