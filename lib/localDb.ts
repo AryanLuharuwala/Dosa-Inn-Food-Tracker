@@ -320,6 +320,8 @@ export interface Order {
     merchantOrderId?: string;
     customerPhone?: string;
     customerName?: string;
+    /** 'online' = paid via PhonePe; 'counter' = pay-at-counter mode (no token verification). */
+    paymentMethod?: 'online' | 'counter';
 }
 
 function docToOrder(d: Record<string, unknown>): Order {
@@ -339,6 +341,7 @@ function docToOrder(d: Record<string, unknown>): Order {
         merchantOrderId: d.merchantOrderId as string | undefined,
         customerPhone: d.customerPhone as string | undefined,
         customerName: d.customerName as string | undefined,
+        paymentMethod: d.paymentMethod as 'online' | 'counter' | undefined,
     };
 }
 
@@ -383,6 +386,9 @@ export interface Settings {
     rushHourItems: string[];
     restaurantName?: string;
     tagline?: string;
+    /** Master switch. When false, customers don't see PhonePe and pay at the
+     *  counter — orders go straight to confirmation with paymentMethod='counter'. */
+    paymentsEnabled?: boolean;
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -393,6 +399,8 @@ export async function getSettings(): Promise<Settings> {
         rushHourItems: (doc?.rushHourItems as string[]) ?? [],
         restaurantName: (doc?.restaurantName as string) ?? 'Rocky Da Adda',
         tagline: (doc?.tagline as string) ?? '100% Pure Veg',
+        // Default OFF until PhonePe registration is complete — counter payment only.
+        paymentsEnabled: (doc?.paymentsEnabled as boolean) ?? false,
     };
 }
 

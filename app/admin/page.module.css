@@ -11,12 +11,38 @@
     padding: var(--space-md);
     background-color: var(--color-bg-card);
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    gap: var(--space-md);
 }
 
 .headerLeft {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
+    flex-shrink: 0;
+}
+
+/* Mobile: collapse the header into a single horizontally scrollable strip so
+ * Pricing / Analytics / Rush / Logout don't get clipped offscreen. */
+@media (max-width: 768px) {
+    .header {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        justify-content: flex-start;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+    .header::-webkit-scrollbar {
+        height: 4px;
+    }
+    .header::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 2px;
+    }
+    .headerLeft,
+    .rushHourToggle {
+        flex-shrink: 0;
+    }
 }
 
 .logo {
@@ -113,6 +139,21 @@
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
+@media (max-width: 768px) {
+    .tabs {
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+    .tabs::-webkit-scrollbar {
+        height: 3px;
+    }
+    .tabs::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.15);
+    }
+}
+
 .tab {
     flex: 1;
     display: flex;
@@ -127,6 +168,13 @@
     border-bottom: 2px solid transparent;
     transition: all var(--transition-fast);
     position: relative;
+}
+
+@media (max-width: 768px) {
+    .tab {
+        flex: 0 0 auto;
+        min-width: 80px;
+    }
 }
 
 .tab:hover {

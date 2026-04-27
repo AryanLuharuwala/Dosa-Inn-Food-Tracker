@@ -221,16 +221,27 @@ export async function POST(req: NextRequest) {
                 order.merchantOrderId = merchantOrderId;
             }
 
-            if (!paymentToken || !await consumePaymentToken(paymentToken, order.totalAmount)) {
-                // Token already consumed (by another device winning the race) and
-                // the order exists under that merchantOrderId — return it.
-                if (merchantOrderId) {
-                    const existing = await findOrderByMerchantOrderId(merchantOrderId);
-                    if (existing) {
-                        return NextResponse.json({ ok: true, orderId: existing.orderId, duplicate: true });
+            // Server-authoritative payment gate. When paymentsEnabled is OFF,
+            // the restaurant is in counter-payment mode: skip PhonePe token
+            // verification and tag the order so staff knows to collect cash.
+            // The setting is read fresh each request so flipping the toggle
+            // takes effect immediately.
+            const { paymentsEnabled } = await getSettings();
+            if (paymentsEnabled) {
+                if (!paymentToken || !await consumePaymentToken(paymentToken, order.totalAmount)) {
+                    // Token already consumed (by another device winning the race) and
+                    // the order exists under that merchantOrderId — return it.
+                    if (merchantOrderId) {
+                        const existing = await findOrderByMerchantOrderId(merchantOrderId);
+                        if (existing) {
+                            return NextResponse.json({ ok: true, orderId: existing.orderId, duplicate: true });
+                        }
                     }
+                    return NextResponse.json({ error: 'Invalid or expired payment token' }, { status: 403 });
                 }
-                return NextResponse.json({ error: 'Invalid or expired payment token' }, { status: 403 });
+                order.paymentMethod = 'online';
+            } else {
+                order.paymentMethod = 'counter';
             }
 
             await appendOrder(order);

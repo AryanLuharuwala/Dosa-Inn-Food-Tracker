@@ -5,9 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import LeafLoader from '@/components/LeafLoader';
 import { useCart } from '@/lib/cartContext';
+import { useMenu } from '@/lib/menuContext';
 import { ensureSession } from '@/lib/auth';
 import { fetchSharedCart } from '@/lib/useSharedCart';
 import type { SharedCart } from '@/lib/useSharedCart';
+import { getUniqueToken } from '@/lib/tokens';
 import styles from './page.module.css';
 
 export default function CheckoutPage() {
@@ -23,7 +25,8 @@ function CheckoutPageInner() {
     const searchParams = useSearchParams();
     const payMode = searchParams.get('pay'); // 'share' | 'full' | null
     const sharedCode = searchParams.get('code');
-    const { items, extras, tableNumber, orderType, preorderDetails, totalAmount, sharedCartCode } = useCart();
+    const { items, extras, tableNumber, orderType, preorderDetails, totalAmount, sharedCartCode, clearCart } = useCart();
+    const { paymentsEnabled, addOrder } = useMenu();
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState('');
     const [fullBillCart, setFullBillCart] = useState<SharedCart | null>(null);
@@ -57,6 +60,82 @@ function CheckoutPageInner() {
                 + p.extras.reduce((s, e) => s + e.extra.price * e.quantity, 0);
         }, 0)
         : totalAmount;
+
+    /**
+     * Counter-payment flow: skip PhonePe entirely, place the order on the server,
+     * navigate to confirmation. Server still gates this — order_add only accepts
+     * a token-less request when paymentsEnabled === false in DB settings.
+     */
+    const handleCounterOrder = async () => {
+        if (orderCompleted.current) return;
+        setError('');
+        setIsProcessing(true);
+
+        try {
+            const tokenId = await ensureSession();
+            const tokenNumberValue =
+                orderType === 'dine-in' && tableNumber
+                    ? parseInt(tableNumber, 10)
+                    : await getUniqueToken();
+            const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const orderId = `#${tokenNumberValue}-RDA-${randomSuffix}`;
+
+            const orderData = {
+                orderId,
+                orderType,
+                tableNumber: orderType === 'dine-in' ? (tableNumber || '0') : null,
+                preorderDetails: orderType === 'preorder' ? preorderDetails : null,
+                tokenNumber: tokenNumberValue,
+                items: billItems.map(item => ({
+                    menuItem: { id: item.menuItem.id, name: item.menuItem.name, price: item.menuItem.price },
+                    quantity: item.quantity,
+                    selectedAddOns: item.selectedAddOns.map(a => ({ id: a.id, name: a.name, price: a.price })),
+                    totalPrice: item.totalPrice,
+                })),
+                extras: billExtras.map(e => ({
+                    extra: { id: e.extra.id, name: e.extra.name, price: e.extra.price },
+                    quantity: e.quantity,
+                })),
+                totalAmount: billAmount,
+                timestamp: new Date().toISOString(),
+                status: 'pending' as const,
+                tokenId: tokenId || '',
+                paymentMethod: 'counter' as const,
+                ...(orderType === 'preorder' && preorderDetails?.customerPhone
+                    ? { customerPhone: preorderDetails.customerPhone, customerName: preorderDetails.customerName }
+                    : {}),
+                ...(orderType !== 'preorder' && whatsappPhone
+                    ? { customerPhone: whatsappPhone.replace(/\D/g, '') }
+                    : {}),
+            };
+
+            const res = await fetch('/api/db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'order_add', order: orderData }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || 'Failed to place order');
+            }
+
+            const result = await res.json().catch(() => ({} as { orderId?: string }));
+            const finalId = (result as { orderId?: string }).orderId || orderId;
+            const placedOrder = { ...orderData, orderId: finalId };
+
+            // Update local state so kitchen/admin pages see the new order immediately
+            addOrder(placedOrder as Parameters<typeof addOrder>[0]);
+            localStorage.setItem('lastOrder', JSON.stringify(placedOrder));
+            clearCart();
+
+            orderCompleted.current = true;
+            router.replace(`/order-confirmed`);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Something went wrong';
+            setError(message);
+            setIsProcessing(false);
+        }
+    };
 
     const handlePhonePePayment = async () => {
         setError('');
@@ -246,29 +325,57 @@ function CheckoutPageInner() {
                             </div>
                         )}
 
-                        <button
-                            className={styles.phonePeBtn}
-                            onClick={handlePhonePePayment}
-                            disabled={isProcessing}
-                        >
-                            <span className={styles.phonePeLogo}>Pe</span>
-                            <span>Pay ₹{billAmount} with PhonePe</span>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        </button>
+                        {paymentsEnabled ? (
+                            <button
+                                className={styles.phonePeBtn}
+                                onClick={handlePhonePePayment}
+                                disabled={isProcessing}
+                            >
+                                <span className={styles.phonePeLogo}>Pe</span>
+                                <span>Pay ₹{billAmount} with PhonePe</span>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </button>
+                        ) : (
+                            <button
+                                className={styles.phonePeBtn}
+                                onClick={handleCounterOrder}
+                                disabled={isProcessing}
+                            >
+                                <span>Place Order · ₹{billAmount}</span>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
 
-                    {/* Security Info */}
+                    {/* Payment info */}
                     <div className={styles.infoBox}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                            <path d="M7 11V7a5 5 0 0110 0v4" />
-                        </svg>
-                        <div>
-                            <p className={styles.infoTitle}>Secure Payment</p>
-                            <p className={styles.infoText}>Powered by PhonePe — supports UPI, credit/debit cards, and net banking. 256-bit encrypted.</p>
-                        </div>
+                        {paymentsEnabled ? (
+                            <>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                                </svg>
+                                <div>
+                                    <p className={styles.infoTitle}>Secure Payment</p>
+                                    <p className={styles.infoText}>Powered by PhonePe — supports UPI, credit/debit cards, and net banking. 256-bit encrypted.</p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <path d="M12 6v6l4 2" strokeLinecap="round" />
+                                </svg>
+                                <div>
+                                    <p className={styles.infoTitle}>Pay at the Counter</p>
+                                    <p className={styles.infoText}>Place your order now and pay when you collect — show your token number at the counter.</p>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

@@ -77,6 +77,8 @@ export default function AdminPage() {
         restaurantName,
         tagline: contextTagline,
         updateBranding,
+        paymentsEnabled,
+        setPaymentsEnabled,
     } = useMenu();
 
     const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'rush-hour' | 'whatsapp'>('orders');
@@ -1054,6 +1056,49 @@ export default function AdminPage() {
                                 </div>
                             </div>
                         )}
+
+                        {/* Payments toggle — when off, customers pay at the counter */}
+                        <div className={styles.waInstructions}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                                <div style={{ flex: 1 }}>
+                                    <h3 style={{ marginBottom: 4 }}>Online Payments</h3>
+                                    <p style={{ fontSize: '0.875rem', color: '#666', margin: 0 }}>
+                                        {paymentsEnabled
+                                            ? 'Customers pay via PhonePe before order is placed.'
+                                            : 'Counter mode — customers place orders directly and pay at the counter. Turn this on after PhonePe registration is complete.'}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={paymentsEnabled}
+                                    onClick={() => setPaymentsEnabled(!paymentsEnabled)}
+                                    style={{
+                                        position: 'relative',
+                                        width: 52,
+                                        height: 28,
+                                        flexShrink: 0,
+                                        borderRadius: 999,
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        background: paymentsEnabled ? 'var(--color-primary, #1a4d2e)' : '#ccc',
+                                        transition: 'background 0.15s',
+                                    }}
+                                >
+                                    <span style={{
+                                        position: 'absolute',
+                                        top: 2,
+                                        left: paymentsEnabled ? 26 : 2,
+                                        width: 24,
+                                        height: 24,
+                                        borderRadius: '50%',
+                                        background: '#fff',
+                                        transition: 'left 0.15s',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                    }} />
+                                </button>
+                            </div>
+                        </div>
 
                         {/* Branding */}
                         <div className={styles.waInstructions}>
