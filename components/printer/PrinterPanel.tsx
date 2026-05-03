@@ -57,11 +57,13 @@ export default function PrinterPanel({
         try { await connect(); }
         catch (e) {
             const msg = (e as Error).message;
-            // User cancelling the device picker triggers a "User cancelled" /
-            // NotFoundError — don't show that as an error.
-            if (!/cancel/i.test(msg) && !/NotFoundError/i.test(msg)) {
-                setError(msg);
+            // User cancelling the device picker is harmless — don't surface it.
+            // The picker emits "User cancelled the requestDevice() chooser." or
+            // a NotFoundError when no device is selected.
+            if (/cancel/i.test(msg) || /No matching|chooser/i.test(msg)) {
+                return;
             }
+            setError(msg);
         }
         finally { setBusy(false); }
     };
@@ -162,9 +164,21 @@ export default function PrinterPanel({
             </div>
 
             {error && (
-                <p style={{ marginTop: 12, padding: '8px 12px', background: '#fef2f2', color: '#991b1b', borderRadius: 6, fontSize: '0.85rem' }}>
-                    {error}
-                </p>
+                <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', color: '#991b1b', borderRadius: 6, fontSize: '0.85rem', lineHeight: 1.5 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 6 }}>Couldn&apos;t connect</div>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{error}</div>
+                    <details style={{ marginTop: 10 }}>
+                        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Troubleshooting checklist</summary>
+                        <ol style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                            <li>Close the <strong>iPrint</strong> app on your phone if it&apos;s open — most thermal printers only allow one connection.</li>
+                            <li>Open your phone/computer Bluetooth settings → if the printer is listed there, <strong>unpair / forget</strong> it. Web Bluetooth needs to handle the pairing itself.</li>
+                            <li>Press the printer&apos;s power button briefly to wake it (the LED should be solid, not blinking).</li>
+                            <li>Click <strong>Connect Printer</strong> again — the first attempt sometimes fails immediately after another app released the printer.</li>
+                            <li>If still nothing: try a hard reset of the printer (hold power for 5+ sec until it beeps), then retry.</li>
+                            <li>If it consistently fails after pairing: this printer model may use Bluetooth Classic / SPP (not BLE), which the browser cannot reach. Tell me the model and we&apos;ll figure out next steps.</li>
+                        </ol>
+                    </details>
+                </div>
             )}
 
             {isConnected && diagnostics && (

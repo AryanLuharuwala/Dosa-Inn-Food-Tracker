@@ -349,6 +349,11 @@ class BluetoothPrinterClient {
         if (!this.isSupported()) {
             throw new Error('Web Bluetooth is not supported in this browser. Use Chrome/Edge on desktop or Chrome on Android.');
         }
+        // Web Bluetooth requires a secure context. Catching this here gives a
+        // clearer message than Chrome's "Web Bluetooth API globally disabled".
+        if (typeof window !== 'undefined' && !window.isSecureContext) {
+            throw new Error('Web Bluetooth requires HTTPS. Open the site over https:// or localhost.');
+        }
 
         const device = await navigator.bluetooth.requestDevice({
             acceptAllDevices: true,
@@ -361,7 +366,11 @@ class BluetoothPrinterClient {
             this.notify();
         });
 
-        const server = await device.gatt!.connect();
+        // Chromium has a known quirk where the first GATT connect attempt
+        // can fail on a freshly-picked device, particularly if it was just
+        // released by another app. Retry up to 3 times with backoff before
+        // giving up. Throws a more specific error if all retries exhaust.
+        const server = await this.connectGattWithRetry(device);
 
         // Walk every primary service. iPrint-family printers (SC03h etc.) put
         // their write channel on a custom service like 0xAE30, so we can't
@@ -444,6 +453,31 @@ class BluetoothPrinterClient {
         this.writeQueue = Promise.resolve();
         try { localStorage.removeItem(STORAGE_KEY); } catch {}
         this.notify();
+    }
+
+    private async connectGattWithRetry(device: BluetoothDevice): Promise<BluetoothRemoteGATTServer> {
+        const MAX_ATTEMPTS = 3;
+        let lastErr: unknown;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                return await device.gatt!.connect();
+            } catch (err) {
+                lastErr = err;
+                console.warn(`[BluetoothPrinter] GATT connect attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err);
+                if (attempt < MAX_ATTEMPTS) {
+                    await new Promise(r => setTimeout(r, 400 * attempt));
+                }
+            }
+        }
+        const msg = (lastErr as Error)?.message ?? 'Connection attempt failed';
+        // Wrap with a clearer, action-oriented message
+        throw new Error(
+            `Could not connect to "${device.name ?? 'printer'}". ` +
+            `Most common causes: (1) the printer's iPrint app or another phone is still connected — close it first, ` +
+            `(2) the printer is asleep — press its power button to wake it, ` +
+            `(3) the printer is paired in OS Bluetooth settings — unpair it there and try again. ` +
+            `[${msg}]`
+        );
     }
 
     /** Public entry point — appends to the serial queue so concurrent calls

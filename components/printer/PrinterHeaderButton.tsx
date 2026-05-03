@@ -29,9 +29,13 @@ export default function PrinterHeaderButton() {
             }
         } catch (e) {
             const msg = (e as Error).message;
-            if (!/cancel/i.test(msg) && !/NotFoundError/i.test(msg)) {
-                alert(msg);
+            // Picker cancel = harmless; everything else (incl. GATT failures
+            // from connectGattWithRetry) gets surfaced. The thrown message
+            // already includes a remediation hint.
+            if (/cancel/i.test(msg) || /No matching|chooser/i.test(msg)) {
+                return;
             }
+            alert(msg + '\n\nTip: open Admin → WA tab → Bluetooth Printer for the full troubleshooting checklist.');
         } finally {
             setBusy(false);
         }
