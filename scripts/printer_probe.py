@@ -15,15 +15,15 @@ Usage:
         Scan for nearby BLE devices for ~8 seconds and list them.
 
     python3 printer_probe.py inspect <ADDRESS_OR_NAME>
-        Connect and dump every service + characteristic. This is the
-        most important diagnostic — it tells us exactly which UUIDs
-        and properties the printer exposes.
+        Connect and dump every service + characteristic. The most
+        important diagnostic — tells us exactly which UUIDs and
+        properties the printer exposes.
 
     python3 printer_probe.py test-cat <ADDRESS_OR_NAME>
-        Send a cat-printer / iPrint protocol test print: a few
-        horizontal bars + the text "TEST" rendered as a bitmap.
-        If this prints, the printer is cat-protocol and our web
-        code should work after the next deploy.
+        Send a cat-printer / iPrint protocol test print: horizontal
+        bars + vertical stripes rendered as a 384-px bitmap. If this
+        prints, the printer speaks cat-protocol and our web code
+        will work after the next deploy.
 
     python3 printer_probe.py test-escpos <ADDRESS_OR_NAME>
         Send a plain ESC/POS test print. If this prints (and test-cat
@@ -32,7 +32,12 @@ Usage:
 ADDRESS_OR_NAME can be:
     - a MAC address like AA:BB:CC:DD:EE:FF (Linux/Windows)
     - a UUID like 12345678-1234-1234-1234-123456789ABC (macOS)
-    - a substring of the device name like "SC03h" (will scan + match)
+    - a substring of the device name like "SC03h"
+
+Note: every command does its own BLE-only scan first, so connections
+always go over the LE transport (vital for printers that advertise
+both Bluetooth Classic and BLE — without this, BlueZ picks Classic
+and you get br-connection-refused).
 """
 
 import asyncio
@@ -51,7 +56,7 @@ CAT_PRINT_SRV = "0000ae30-0000-1000-8000-00805f9b34fb"
 CAT_PRINT_TX = "0000ae01-0000-1000-8000-00805f9b34fb"
 CAT_PRINT_RX = "0000ae02-0000-1000-8000-00805f9b34fb"
 
-# Common alternate BLE thermal printer service UUIDs to probe
+# Common alternate BLE thermal printer service UUIDs to highlight in inspect
 ALT_PRINT_SERVICES = [
     "000018f0-0000-1000-8000-00805f9b34fb",  # Goojprt / Mocodo
     "0000ff00-0000-1000-8000-00805f9b34fb",  # generic vendor
@@ -88,7 +93,6 @@ def frame(cmd: int, payload: bytes) -> bytes:
     ])
 
 
-# Cat-printer command opcodes
 CMD_GET_DEVICE_STATE = 0xa3
 CMD_LATTICE = 0xa6
 CMD_FEED = 0xa1
@@ -101,25 +105,64 @@ LATTICE_START = bytes([0xaa, 0x55, 0x17, 0x38, 0x44, 0x5f, 0x5f, 0x5f, 0x44, 0x3
 LATTICE_END = bytes([0xaa, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17])
 
 
-# ── Resolution helpers ──────────────────────────────────────────────────────
+# ── Resolution & error handling ──────────────────────────────────────────────
 
 async def resolve(target: str):
-    """Accept a MAC, UUID, or name substring; return a BLEDevice."""
-    # If it looks like an address (colons or all-hex-uuid), use directly
-    if ':' in target or len(target) >= 32:
-        return target
+    """Find the device via BLE-only scan and return its BLEDevice object.
 
-    print(f"Looking for device matching name '{target}'...")
+    Always returning a BLEDevice (not a raw address string) is critical
+    for devices that advertise both BR/EDR (Classic) and BLE — like
+    cheap Chinese thermal printers. Passing an address string lets BlueZ
+    pick BR/EDR by default; passing a BLEDevice forces LE since the
+    scanner only saw the LE advertisement.
+    """
+    target_lower = target.lower()
+    print(f"Scanning (LE-only, 8s) for '{target}'...")
     found = await BleakScanner.discover(timeout=8.0)
-    candidates = [d for d in found if (d.name or '') and target.lower() in d.name.lower()]
-    if not candidates:
-        print(f"No device found matching '{target}'. Available devices:")
-        for d in found:
-            print(f"  {d.address}  {d.name!r}")
-        sys.exit(1)
-    if len(candidates) > 1:
-        print(f"Multiple matches; using first: {candidates[0].address} ({candidates[0].name})")
-    return candidates[0].address
+    for d in found:
+        if d.address.lower() == target_lower:
+            print(f"Found {d.address}  ({d.name!r})")
+            return d
+    if ':' not in target and len(target) < 32:
+        candidates = [d for d in found if (d.name or '') and target_lower in d.name.lower()]
+        if candidates:
+            d = candidates[0]
+            print(f"Found {d.address}  ({d.name!r})")
+            return d
+    print(f"\nNo BLE-advertising device found matching '{target}'. Available:")
+    for d in found:
+        print(f"  {d.address}  {d.name!r}")
+    print("\nIf the printer was visible via `scan` but not here, it stopped")
+    print("advertising on LE — power-cycle it and retry.")
+    sys.exit(1)
+
+
+def explain_connect_error(e: Exception, device) -> None:
+    """Decode common BlueZ / bleak connect failures into actionable hints."""
+    msg = str(e)
+    print(f"\nConnect failed: {msg}\n")
+    if 'br-connection-refused' in msg:
+        print("  → BlueZ tried to connect over Bluetooth Classic (BR/EDR), not BLE,")
+        print("    and the printer refused. This printer likely only accepts Classic")
+        print("    SPP connections (which is what the iPrint app uses internally).")
+        print("    Web Bluetooth cannot reach Classic devices — that's a hard browser")
+        print("    limitation, not a code issue.")
+        print()
+        print("    Try this first to clear stale OS pairing:")
+        print(f"        bluetoothctl -- remove {device.address}")
+        print("        bluetoothctl -- power off && bluetoothctl -- power on")
+        print("    then re-run this script.")
+        print()
+        print("    If that still fails: the printer needs a native bridge (Android")
+        print("    app, Python service, or Pi running BlueZ SPP) to drive it,")
+        print("    or replace it with a BLE-native thermal printer.")
+    elif 'le-connection-abort-by-local' in msg:
+        print("  → Adapter aborted the LE handshake. Usually fixed by restarting")
+        print("    the Bluetooth service:  sudo systemctl restart bluetooth")
+    elif 'NotReady' in msg:
+        print("  → BlueZ adapter not ready. Try:  bluetoothctl power on")
+    elif 'Already' in msg or 'In Progress' in msg:
+        print("  → Previous connection attempt still pending. Wait a few seconds and retry.")
 
 
 # ── Commands ─────────────────────────────────────────────────────────────────
@@ -133,7 +176,7 @@ async def cmd_scan():
         name = device.name or '<unnamed>'
         services = ', '.join(adv.service_uuids) if adv and adv.service_uuids else ''
         rows.append((rssi or -999, addr, name, services))
-    rows.sort(reverse=True)  # strongest signal first
+    rows.sort(reverse=True)
     print(f"{'RSSI':>5}  {'ADDRESS':<20}  {'NAME':<28}  ADVERTISED SERVICES")
     print('-' * 100)
     for rssi, addr, name, services in rows:
@@ -142,137 +185,136 @@ async def cmd_scan():
 
 
 async def cmd_inspect(target: str):
-    addr = await resolve(target)
-    print(f"\nConnecting to {addr}...")
-    async with BleakClient(addr, timeout=15.0) as c:
-        print(f"Connected. MTU = {getattr(c, 'mtu_size', '?')}\n")
-        for svc in c.services:
-            print(f"Service: {svc.uuid}  {svc.description or ''}")
-            for ch in svc.characteristics:
-                props = ', '.join(ch.properties)
-                print(f"  Char  {ch.uuid}  [{props}]  {ch.description or ''}")
-                for desc in ch.descriptors:
-                    print(f"    Desc {desc.uuid}")
-            print()
-        print("--- Probe summary ---")
-        # Check which known services this printer exposes
-        all_uuids = {svc.uuid for svc in c.services}
-        if CAT_PRINT_SRV in all_uuids:
-            print(f"  ✓ Cat-printer service ({CAT_PRINT_SRV}) PRESENT — use cat-printer protocol")
-        else:
-            print(f"  ✗ Cat-printer service ({CAT_PRINT_SRV}) absent")
-        for s in ALT_PRINT_SERVICES:
-            if s in all_uuids:
-                print(f"  ✓ Alternate service {s} PRESENT")
+    device = await resolve(target)
+    print(f"\nConnecting to {device.address} (forcing BLE transport)...")
+    try:
+        async with BleakClient(device, timeout=15.0) as c:
+            print(f"Connected. MTU = {getattr(c, 'mtu_size', '?')}\n")
+            for svc in c.services:
+                print(f"Service: {svc.uuid}  {svc.description or ''}")
+                for ch in svc.characteristics:
+                    props = ', '.join(ch.properties)
+                    print(f"  Char  {ch.uuid}  [{props}]  {ch.description or ''}")
+                    for desc in ch.descriptors:
+                        print(f"    Desc {desc.uuid}")
+                print()
+            print("--- Probe summary ---")
+            all_uuids = {svc.uuid for svc in c.services}
+            if CAT_PRINT_SRV in all_uuids:
+                print(f"  ✓ Cat-printer service ({CAT_PRINT_SRV}) PRESENT — use cat-printer protocol")
+            else:
+                print(f"  ✗ Cat-printer service ({CAT_PRINT_SRV}) absent")
+            for s in ALT_PRINT_SERVICES:
+                if s in all_uuids:
+                    print(f"  ✓ Alternate service {s} PRESENT")
+    except Exception as e:
+        explain_connect_error(e, device)
 
 
 async def cmd_test_cat(target: str):
-    addr = await resolve(target)
-    print(f"Connecting to {addr}...")
-    async with BleakClient(addr, timeout=15.0) as c:
-        print("Connected.")
-        # Locate the cat-printer write characteristic
-        tx = None
-        for svc in c.services:
-            if svc.uuid.lower() == CAT_PRINT_SRV.lower():
-                for ch in svc.characteristics:
-                    if ch.uuid.lower() == CAT_PRINT_TX.lower():
-                        tx = ch
-                        break
-        if tx is None:
-            print(f"ERROR: cat-printer TX char ({CAT_PRINT_TX}) not found on {CAT_PRINT_SRV}.")
-            print("This printer doesn't expose the cat-printer service. Run `inspect` to see what it has.")
-            return
+    device = await resolve(target)
+    print(f"Connecting to {device.address} (forcing BLE transport)...")
+    try:
+        async with BleakClient(device, timeout=15.0) as c:
+            print("Connected.")
+            tx = None
+            for svc in c.services:
+                if svc.uuid.lower() == CAT_PRINT_SRV.lower():
+                    for ch in svc.characteristics:
+                        if ch.uuid.lower() == CAT_PRINT_TX.lower():
+                            tx = ch
+                            break
+            if tx is None:
+                print(f"ERROR: cat-printer TX char ({CAT_PRINT_TX}) not found on {CAT_PRINT_SRV}.")
+                print("Run `inspect` to see what services this printer actually exposes.")
+                return
 
-        async def send(packet: bytes):
-            await c.write_gatt_char(tx, packet, response=False)
+            async def send(packet: bytes):
+                await c.write_gatt_char(tx, packet, response=False)
 
-        print("\nSending preamble (state probe, lattice, speed, energy, apply)...")
-        await send(frame(CMD_GET_DEVICE_STATE, b'\x00'))
-        await send(frame(CMD_LATTICE, LATTICE_START))
-        await send(frame(CMD_SPEED, b'\x20'))                                   # speed = 32
-        await send(frame(CMD_ENERGY, bytes([0xc0, 0x5d, 0x00, 0x00])))          # energy = 24000 (LE)
-        await send(frame(CMD_APPLY_ENERGY, b'\x01'))
+            print("\nSending preamble (state probe, lattice, speed, energy, apply)...")
+            await send(frame(CMD_GET_DEVICE_STATE, b'\x00'))
+            await send(frame(CMD_LATTICE, LATTICE_START))
+            await send(frame(CMD_SPEED, b'\x20'))                                   # speed = 32
+            await send(frame(CMD_ENERGY, bytes([0xc0, 0x5d, 0x00, 0x00])))          # energy = 24000 (LE)
+            await send(frame(CMD_APPLY_ENERGY, b'\x01'))
 
-        print("Sending test bitmap (24 rows × 384 px)...")
-        # Pattern: 4 solid black, 4 white, 4 black, 4 white, then a vertical-stripe block
-        pattern_rows = []
-        for _ in range(4): pattern_rows.append(bytes([0xff] * 48))
-        for _ in range(4): pattern_rows.append(bytes([0x00] * 48))
-        for _ in range(4): pattern_rows.append(bytes([0xff] * 48))
-        for _ in range(4): pattern_rows.append(bytes([0x00] * 48))
-        # Vertical stripes (every other byte filled)
-        stripes = bytes([0xff if i % 2 == 0 else 0x00 for i in range(48)])
-        for _ in range(8): pattern_rows.append(stripes)
+            print("Sending test bitmap (24 rows × 384 px)...")
+            pattern_rows = []
+            for _ in range(4): pattern_rows.append(bytes([0xff] * 48))
+            for _ in range(4): pattern_rows.append(bytes([0x00] * 48))
+            for _ in range(4): pattern_rows.append(bytes([0xff] * 48))
+            for _ in range(4): pattern_rows.append(bytes([0x00] * 48))
+            stripes = bytes([0xff if i % 2 == 0 else 0x00 for i in range(48)])
+            for _ in range(8): pattern_rows.append(stripes)
 
-        for row in pattern_rows:
-            await send(frame(CMD_BITMAP, row))
-            await asyncio.sleep(0.005)  # tiny pacing — some BLE printers choke without it
+            for row in pattern_rows:
+                await send(frame(CMD_BITMAP, row))
+                await asyncio.sleep(0.005)
 
-        print("Sending postamble (feed 64, lattice end)...")
-        await send(frame(CMD_FEED, b'\x40\x00'))
-        await send(frame(CMD_LATTICE, LATTICE_END))
+            print("Sending postamble (feed 64, lattice end)...")
+            await send(frame(CMD_FEED, b'\x40\x00'))
+            await send(frame(CMD_LATTICE, LATTICE_END))
 
-        print("\nDone. If paper printed bars + stripes, cat-printer protocol works! ✓")
-        print("If blank, the printer either uses a different protocol or different UUIDs.")
-        print("Run the `inspect` command to see what services this printer actually exposes.")
+            print("\nDone. If paper printed bars + stripes, cat-printer protocol works ✓")
+            print("If blank, the printer uses different UUIDs or a different protocol.")
+    except Exception as e:
+        explain_connect_error(e, device)
 
 
 async def cmd_test_escpos(target: str):
-    addr = await resolve(target)
-    print(f"Connecting to {addr}...")
-    async with BleakClient(addr, timeout=15.0) as c:
-        print("Connected.")
-        # Find any writable characteristic (preferring writeWithoutResponse)
-        tx = None
-        for svc in c.services:
-            for ch in svc.characteristics:
-                if 'write-without-response' in ch.properties:
-                    tx = ch
-                    print(f"Using {svc.uuid} / {ch.uuid} (writeWithoutResponse)")
-                    break
-            if tx: break
-        if not tx:
+    device = await resolve(target)
+    print(f"Connecting to {device.address} (forcing BLE transport)...")
+    try:
+        async with BleakClient(device, timeout=15.0) as c:
+            print("Connected.")
+            tx = None
             for svc in c.services:
                 for ch in svc.characteristics:
-                    if 'write' in ch.properties:
+                    if 'write-without-response' in ch.properties:
                         tx = ch
-                        print(f"Using {svc.uuid} / {ch.uuid} (write)")
+                        print(f"Using {svc.uuid} / {ch.uuid} (writeWithoutResponse)")
                         break
                 if tx: break
-        if not tx:
-            print("ERROR: No writable characteristic found. Run `inspect` to see what's available.")
-            return
+            if not tx:
+                for svc in c.services:
+                    for ch in svc.characteristics:
+                        if 'write' in ch.properties:
+                            tx = ch
+                            print(f"Using {svc.uuid} / {ch.uuid} (write)")
+                            break
+                    if tx: break
+            if not tx:
+                print("ERROR: No writable characteristic found. Run `inspect`.")
+                return
 
-        ESC = 0x1b
-        GS = 0x1d
-        data = bytearray()
-        data += bytes([ESC, 0x40])                                  # init
-        data += bytes([ESC, 0x61, 0x01])                            # center
-        data += bytes([ESC, 0x45, 0x01])                            # bold on
-        data += bytes([GS, 0x21, 0x11])                             # double-size
-        data += b"ESC/POS TEST\n"
-        data += bytes([GS, 0x21, 0x00])                             # normal size
-        data += bytes([ESC, 0x45, 0x00])                            # bold off
-        data += bytes([ESC, 0x61, 0x00])                            # left
-        data += b"-" * 32 + b"\n"
-        data += b"If you see this text, the\n"
-        data += b"printer accepts plain ESC/POS\n"
-        data += b"over BLE.\n"
-        data += b"-" * 32 + b"\n\n\n\n"
-        data += bytes([GS, 0x56, 0x42, 0x00])                       # feed + cut
+            ESC, GS = 0x1b, 0x1d
+            data = bytearray()
+            data += bytes([ESC, 0x40])
+            data += bytes([ESC, 0x61, 0x01])
+            data += bytes([ESC, 0x45, 0x01])
+            data += bytes([GS, 0x21, 0x11])
+            data += b"ESC/POS TEST\n"
+            data += bytes([GS, 0x21, 0x00])
+            data += bytes([ESC, 0x45, 0x00])
+            data += bytes([ESC, 0x61, 0x00])
+            data += b"-" * 32 + b"\n"
+            data += b"If you see this text, the\n"
+            data += b"printer accepts plain ESC/POS\n"
+            data += b"over BLE.\n"
+            data += b"-" * 32 + b"\n\n\n\n"
+            data += bytes([GS, 0x56, 0x42, 0x00])
 
-        print(f"Sending {len(data)} bytes of ESC/POS in 100-byte chunks...")
-        try:
+            print(f"Sending {len(data)} bytes of ESC/POS in 100-byte chunks...")
             response = 'write-without-response' not in tx.properties
             for i in range(0, len(data), 100):
                 chunk = bytes(data[i:i + 100])
                 await c.write_gatt_char(tx, chunk, response=response)
                 await asyncio.sleep(0.01)
-            print("\nDone. If paper printed text, ESC/POS works! ✓")
-            print("If blank, this printer likely uses a proprietary bitmap protocol.")
-        except Exception as e:
-            print(f"\nWrite error: {e}")
+            print("\nDone. If paper printed text, ESC/POS works ✓")
+            print("If blank, this printer uses a proprietary bitmap protocol.")
+    except Exception as e:
+        explain_connect_error(e, device)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
