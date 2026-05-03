@@ -15,6 +15,10 @@
  */
 
 import type { Order } from './localDb';
+import {
+    CAT_PRINT_SRV, CAT_PRINT_TX,
+    buildTestPacketsCat, buildKOTPacketsCat, buildBillPacketsCat, buildStatsPacketsCat,
+} from './catPrinter';
 
 // ── ESC/POS byte builders ────────────────────────────────────────────────────
 
@@ -304,10 +308,16 @@ const KNOWN_PRINTER_SERVICES: BluetoothServiceUUID[] = [
 
 const STORAGE_KEY = 'btPrinter:lastDeviceId';
 
+export type PrinterProtocol = 'escpos' | 'catprinter';
+
 class BluetoothPrinterClient {
     private device: BluetoothDevice | null = null;
     private server: BluetoothRemoteGATTServer | null = null;
     private char: BluetoothRemoteGATTCharacteristic | null = null;
+    /** ESC/POS for most generic BLE thermal printers; catprinter for the
+     *  iPrint family (SC03h, GB02, MX02, …). Detected post-connect by
+     *  probing for the cat-printer service UUID. */
+    private protocol: PrinterProtocol = 'escpos';
     private listeners = new Set<() => void>();
     /** Serializes every write() call. Two prints fired back-to-back used to
      *  interleave their byte streams over the BLE link, producing garbled
@@ -330,10 +340,15 @@ class BluetoothPrinterClient {
         return this.device?.name ?? null;
     }
 
+    getProtocol(): PrinterProtocol {
+        return this.protocol;
+    }
+
     /** What service/characteristic we're actually writing to. Useful when a
      *  printer connects but won't print — confirms which channel is in use. */
-    getDiagnostics(): { service: string; characteristic: string; properties: string[] } | null {
-        return this.lastDiscovery;
+    getDiagnostics(): { service: string; characteristic: string; properties: string[]; protocol: PrinterProtocol } | null {
+        if (!this.lastDiscovery) return null;
+        return { ...this.lastDiscovery, protocol: this.protocol };
     }
 
     onChange(listener: () => void): () => void {
@@ -428,6 +443,29 @@ class BluetoothPrinterClient {
         this.device = device;
         this.server = server;
         this.char = writable;
+
+        // Protocol detection: if we landed on the cat-printer print service,
+        // every print job must be rendered to a bitmap and shipped as
+        // framed packets — these printers ignore raw ESC/POS bytes.
+        // The TX characteristic 0xAE01 is the canonical write channel; if
+        // the chooser picked something else but we're on the cat service,
+        // try to upgrade to AE01.
+        const isCatService = writableSvcUuid.toLowerCase() === CAT_PRINT_SRV.toLowerCase();
+        if (isCatService) {
+            this.protocol = 'catprinter';
+            // Prefer the canonical TX characteristic if available
+            try {
+                const svc = await server.getPrimaryService(CAT_PRINT_SRV);
+                const tx = await svc.getCharacteristic(CAT_PRINT_TX).catch(() => null);
+                if (tx) {
+                    this.char = tx;
+                    writable = tx;
+                }
+            } catch { /* keep what we have */ }
+        } else {
+            this.protocol = 'escpos';
+        }
+
         this.lastDiscovery = {
             service: writableSvcUuid,
             characteristic: writable.uuid,
@@ -436,7 +474,7 @@ class BluetoothPrinterClient {
                 writable.properties.writeWithoutResponse ? 'writeWithoutResponse' : '',
             ].filter(Boolean),
         };
-        console.log('[BluetoothPrinter] Selected channel:', this.lastDiscovery);
+        console.log('[BluetoothPrinter] Selected channel:', this.lastDiscovery, 'protocol:', this.protocol);
 
         if (device.id) {
             try { localStorage.setItem(STORAGE_KEY, device.id); } catch {}
@@ -450,6 +488,7 @@ class BluetoothPrinterClient {
         this.server = null;
         this.char = null;
         this.lastDiscovery = null;
+        this.protocol = 'escpos';
         this.writeQueue = Promise.resolve();
         try { localStorage.removeItem(STORAGE_KEY); } catch {}
         this.notify();
@@ -487,6 +526,49 @@ class BluetoothPrinterClient {
         const next = this.writeQueue.then(() => this.doWrite(data));
         this.writeQueue = next.catch(() => { /* swallow so chain continues */ });
         return next;
+    }
+
+    /** Send a list of pre-framed packets (cat-printer protocol). The whole
+     *  list runs as a single queued unit so two concurrent print jobs can't
+     *  interleave their bitmap rows. */
+    writeFramed(packets: Uint8Array[]): Promise<void> {
+        const next = this.writeQueue.then(async () => {
+            for (const pkt of packets) {
+                await this.doWrite(pkt);
+            }
+        });
+        this.writeQueue = next.catch(() => {});
+        return next;
+    }
+
+    // ── High-level print entry points — auto-route by protocol ──────────────
+
+    async printTest(restaurantName: string): Promise<void> {
+        if (this.protocol === 'catprinter') {
+            return this.writeFramed(buildTestPacketsCat(restaurantName));
+        }
+        return this.write(buildTestPrint(restaurantName));
+    }
+
+    async printKOT(order: Order, restaurantName: string): Promise<void> {
+        if (this.protocol === 'catprinter') {
+            return this.writeFramed(buildKOTPacketsCat(order, restaurantName));
+        }
+        return this.write(buildKOT(order, restaurantName));
+    }
+
+    async printBill(order: Order, restaurantName: string): Promise<void> {
+        if (this.protocol === 'catprinter') {
+            return this.writeFramed(buildBillPacketsCat(order, restaurantName));
+        }
+        return this.write(buildBill(order, restaurantName));
+    }
+
+    async printStats(orders: Order[], restaurantName: string): Promise<void> {
+        if (this.protocol === 'catprinter') {
+            return this.writeFramed(buildStatsPacketsCat(orders, restaurantName));
+        }
+        return this.write(buildDailyStats(orders, restaurantName));
     }
 
     /** BLE has a small MTU (often 20-185 bytes). Chunking is mandatory. */

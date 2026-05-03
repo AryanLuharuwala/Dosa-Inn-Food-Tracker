@@ -183,16 +183,19 @@ export default function PrinterPanel({
 
             {isConnected && diagnostics && (
                 <details style={{ marginTop: 12, fontSize: '0.75rem', color: '#666' }}>
-                    <summary style={{ cursor: 'pointer' }}>Diagnostics</summary>
+                    <summary style={{ cursor: 'pointer' }}>
+                        Diagnostics ({diagnostics.protocol === 'catprinter' ? 'iPrint / cat-printer protocol' : 'ESC/POS'})
+                    </summary>
                     <div style={{ marginTop: 6, padding: 8, background: '#f9fafb', borderRadius: 4, fontFamily: 'monospace' }}>
+                        <div>Protocol: {diagnostics.protocol}</div>
                         <div>Service: {diagnostics.service}</div>
                         <div>Characteristic: {diagnostics.characteristic}</div>
                         <div>Properties: {diagnostics.properties.join(', ') || '—'}</div>
                     </div>
                     <p style={{ marginTop: 6 }}>
-                        If the test print comes out blank or garbled: this printer probably uses
-                        a proprietary bitmap protocol (iPrint family) instead of ESC/POS. Open
-                        the browser console for the full GATT structure log.
+                        {diagnostics.protocol === 'catprinter'
+                            ? 'Receipts render to a 384-px bitmap and ship as framed packets. If output is blank, try lowering print speed in lib/catPrinter.ts (DEFAULT_SPEED).'
+                            : 'Receipts ship as raw ESC/POS bytes. If output is garbled, the printer may need a different code page.'}
                     </p>
                 </details>
             )}
