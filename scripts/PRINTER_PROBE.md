@@ -83,10 +83,35 @@ the web code can be adjusted to match exactly what your printer accepts.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `scan` doesn't see the printer | Printer asleep or paired to another app | Wake it; close iPrint app |
-| Connect fails immediately | OS already paired the device | `bluetoothctl` → `remove <addr>`; on macOS, Bluetooth Settings → Forget |
+| `br-connection-refused` or `BREDR.ProfileUnavailable` | BlueZ on Linux tried Classic first (printer advertises both BLE & Classic) | `sudo btmgmt bredr off`, retry, then `sudo btmgmt bredr on` |
+| Connect fails after pairing in OS | OS already paired the device | `bluetoothctl -- remove <addr>`; macOS: Bluetooth Settings → Forget |
 | `Permission denied` opening BLE | Linux without bluetooth group | `sudo usermod -aG bluetooth $USER` and re-log |
 | `inspect` connects but lists 0 services | Printer dropped link mid-discovery | Try again; some iPrint printers need 2-3 attempts |
 | `test-cat` prints garbage | Wrong width — printer is 80mm not 58mm | Increase row width to 72 bytes (576 px) in `printer_probe.py` |
+
+### The Linux-specific BR/EDR problem
+
+Many cheap Chinese BLE thermal printers (SC03h, GB02, MX02, etc.) advertise
+both Bluetooth Classic profiles (SPP, A2DP, etc — leftover from generic
+firmware templates) **and** BLE. BlueZ on Linux defaults to Classic when
+both are available, which fails for these devices because their Classic
+side either doesn't accept connections or only accepts paired clients.
+
+The fix is to tell the controller "ignore Classic, use LE only":
+
+```bash
+sudo btmgmt bredr off                          # disable Classic
+~/.venv/bin/python3 scripts/printer_probe.py inspect <ADDR>
+sudo btmgmt bredr on                           # restore Classic
+```
+
+This isn't needed on:
+- **Android Chrome** — Android's BLE stack handles dual-mode devices correctly
+- **macOS** — CoreBluetooth always uses LE for BLEDevice connections
+- **Windows** — WinRT BLE picks LE based on the discovery context
+
+So the deployed web app on `polly.co.in` should work from your phone right
+now. The script's BR/EDR struggle is purely a Linux/BlueZ desktop issue.
 
 ## Why not just use the browser?
 
