@@ -364,12 +364,12 @@ class BluetoothPrinterClient {
         if (!this.isSupported()) {
             throw new Error('Web Bluetooth is not supported in this browser. Use Chrome/Edge on desktop or Chrome on Android.');
         }
-        // Web Bluetooth requires a secure context. Catching this here gives a
-        // clearer message than Chrome's "Web Bluetooth API globally disabled".
         if (typeof window !== 'undefined' && !window.isSecureContext) {
             throw new Error('Web Bluetooth requires HTTPS. Open the site over https:// or localhost.');
         }
 
+        // requestDevice MUST be called inside the user-gesture stack — it
+        // can only run once per click, so we keep it outside the retry loop.
         const device = await navigator.bluetooth.requestDevice({
             acceptAllDevices: true,
             optionalServices: KNOWN_PRINTER_SERVICES,
@@ -381,90 +381,106 @@ class BluetoothPrinterClient {
             this.notify();
         });
 
-        // Chromium has a known quirk where the first GATT connect attempt
-        // can fail on a freshly-picked device, particularly if it was just
-        // released by another app. Retry up to 3 times with backoff before
-        // giving up. Throws a more specific error if all retries exhaust.
-        const server = await this.connectGattWithRetry(device);
-
-        // Walk every primary service. iPrint-family printers (SC03h etc.) put
-        // their write channel on a custom service like 0xAE30, so we can't
-        // shortcut to a known UUID; we log everything found and pick the
-        // best writable characteristic. Preference order:
-        //   1. writeWithoutResponse (most thermal printers want this)
-        //   2. write (with response)
-        // We log all candidates to the console so a printer that connects but
-        // refuses to print can still be debugged remotely.
-        const services = await server.getPrimaryServices();
+        // The full "connect + enumerate + pick characteristic" flow is
+        // retried as a unit, because iPrint-family printers commonly drop
+        // the link between gatt.connect() and getPrimaryServices(). Each
+        // retry re-runs gatt.connect() (cheap, no user gesture needed).
+        // Discovery is retried as a unit — iPrint-family printers commonly
+        // drop the link mid-discovery. A retry loop here uses the existing
+        // pair (no fresh user gesture) and re-runs gatt.connect() each time.
+        const DISCOVERY_ATTEMPTS = 3;
         let writable: BluetoothRemoteGATTCharacteristic | null = null;
         let writableSvcUuid = '';
-        const allCandidates: Array<{ svc: string; chr: string; props: string[] }> = [];
-        for (const svc of services) {
-            const chars = await svc.getCharacteristics().catch(() => []);
-            for (const c of chars) {
-                const props: string[] = [];
-                if (c.properties.write) props.push('write');
-                if (c.properties.writeWithoutResponse) props.push('writeWithoutResponse');
-                if (c.properties.read) props.push('read');
-                if (c.properties.notify) props.push('notify');
-                if (props.length > 0) allCandidates.push({ svc: svc.uuid, chr: c.uuid, props });
-                // Prefer writeWithoutResponse — that's what iPrint and most
-                // ESC/POS BLE printers actually use under the hood.
-                if (!writable && c.properties.writeWithoutResponse) {
-                    writable = c;
-                    writableSvcUuid = svc.uuid;
+        let detectedProtocol: PrinterProtocol = 'escpos';
+        let server: BluetoothRemoteGATTServer | null = null;
+        let lastErr: unknown;
+
+        for (let attempt = 1; attempt <= DISCOVERY_ATTEMPTS; attempt++) {
+            try {
+                server = await this.establishChannelWithRetry(device);
+
+                // STRATEGY 1: try the cat-printer service directly. iPrint
+                // devices often disconnect during getPrimaryServices() but
+                // accept getPrimaryService(specificUuid). If this works, we
+                // skip enumeration entirely.
+                try {
+                    const catSvc = await server.getPrimaryService(CAT_PRINT_SRV);
+                    const tx = await catSvc.getCharacteristic(CAT_PRINT_TX);
+                    writable = tx;
+                    writableSvcUuid = catSvc.uuid;
+                    detectedProtocol = 'catprinter';
+                    console.log('[BluetoothPrinter] Cat-printer service found, skipping enumeration');
+                    break; // success, exit retry loop
+                } catch {
+                    // Not a cat-printer (or service not advertised) — fall
+                    // through to full enumeration for ESC/POS devices.
                 }
-            }
-        }
-        // Fallback: any plain writable characteristic
-        if (!writable) {
-            for (const svc of services) {
-                const chars = await svc.getCharacteristics().catch(() => []);
-                for (const c of chars) {
-                    if (c.properties.write) {
-                        writable = c;
-                        writableSvcUuid = svc.uuid;
-                        break;
+
+                // STRATEGY 2: enumerate all primary services and pick the
+                // first writable characteristic.
+                const services = await server.getPrimaryServices();
+                const candidates: Array<{ svc: string; chr: string; props: string[] }> = [];
+                for (const svc of services) {
+                    const chars = await svc.getCharacteristics().catch(() => []);
+                    for (const c of chars) {
+                        const props: string[] = [];
+                        if (c.properties.write) props.push('write');
+                        if (c.properties.writeWithoutResponse) props.push('writeWithoutResponse');
+                        if (c.properties.read) props.push('read');
+                        if (c.properties.notify) props.push('notify');
+                        if (props.length > 0) candidates.push({ svc: svc.uuid, chr: c.uuid, props });
+                        if (!writable && c.properties.writeWithoutResponse) {
+                            writable = c;
+                            writableSvcUuid = svc.uuid;
+                        }
                     }
                 }
-                if (writable) break;
+                if (!writable) {
+                    for (const svc of services) {
+                        const chars = await svc.getCharacteristics().catch(() => []);
+                        for (const c of chars) {
+                            if (c.properties.write) {
+                                writable = c;
+                                writableSvcUuid = svc.uuid;
+                                break;
+                            }
+                        }
+                        if (writable) break;
+                    }
+                }
+                console.log('[BluetoothPrinter] Discovered GATT structure:', candidates);
+
+                if (!writable) {
+                    throw new Error('No writable characteristic found in discovered services');
+                }
+                detectedProtocol = writableSvcUuid.toLowerCase() === CAT_PRINT_SRV.toLowerCase()
+                    ? 'catprinter' : 'escpos';
+                break; // success
+            } catch (err) {
+                lastErr = err;
+                console.warn(`[BluetoothPrinter] Discovery attempt ${attempt}/${DISCOVERY_ATTEMPTS} failed:`, err);
+                writable = null;
+                writableSvcUuid = '';
+                try { server?.disconnect(); } catch {}
+                if (attempt < DISCOVERY_ATTEMPTS) {
+                    await new Promise(r => setTimeout(r, 600 * attempt));
+                }
             }
         }
 
-        // Always log the GATT layout — invaluable for diagnosing iPrint /
-        // proprietary protocol printers that pair but won't print.
-        console.log('[BluetoothPrinter] Discovered GATT structure:', allCandidates);
-
-        if (!writable) {
-            await server.disconnect();
-            throw new Error(`Connected to "${device.name ?? 'device'}" but no writable characteristic was found. Open DevTools console to see the GATT structure.`);
+        if (!writable || !server) {
+            const msg = (lastErr as Error)?.message ?? 'Service discovery failed';
+            throw new Error(
+                `Connected to "${device.name ?? 'printer'}" but couldn't read its services. ` +
+                `This usually means the printer dropped the BLE link — close the iPrint app, ` +
+                `unpair the device in OS Bluetooth settings, and retry. [${msg}]`
+            );
         }
 
         this.device = device;
         this.server = server;
         this.char = writable;
-
-        // Protocol detection: if we landed on the cat-printer print service,
-        // every print job must be rendered to a bitmap and shipped as
-        // framed packets — these printers ignore raw ESC/POS bytes.
-        // The TX characteristic 0xAE01 is the canonical write channel; if
-        // the chooser picked something else but we're on the cat service,
-        // try to upgrade to AE01.
-        const isCatService = writableSvcUuid.toLowerCase() === CAT_PRINT_SRV.toLowerCase();
-        if (isCatService) {
-            this.protocol = 'catprinter';
-            // Prefer the canonical TX characteristic if available
-            try {
-                const svc = await server.getPrimaryService(CAT_PRINT_SRV);
-                const tx = await svc.getCharacteristic(CAT_PRINT_TX).catch(() => null);
-                if (tx) {
-                    this.char = tx;
-                    writable = tx;
-                }
-            } catch { /* keep what we have */ }
-        } else {
-            this.protocol = 'escpos';
-        }
+        this.protocol = detectedProtocol;
 
         this.lastDiscovery = {
             service: writableSvcUuid,
@@ -494,22 +510,35 @@ class BluetoothPrinterClient {
         this.notify();
     }
 
-    private async connectGattWithRetry(device: BluetoothDevice): Promise<BluetoothRemoteGATTServer> {
+    /**
+     * Full connect+discover flow, retried as a unit. Cat-printer / iPrint
+     * devices are notorious for dropping the link between gatt.connect()
+     * and getPrimaryServices(), particularly when the host enumerates
+     * everything. We avoid the enumeration on cat-printers entirely by
+     * probing for their canonical print service directly.
+     */
+    private async establishChannelWithRetry(device: BluetoothDevice): Promise<BluetoothRemoteGATTServer> {
         const MAX_ATTEMPTS = 3;
         let lastErr: unknown;
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                return await device.gatt!.connect();
+                const server = await device.gatt!.connect();
+                // Brief settle delay — empirically helps cat-printers stay
+                // up long enough to accept the next GATT operation.
+                await new Promise(r => setTimeout(r, 200));
+                if (!server.connected) {
+                    throw new Error('GATT disconnected immediately after connect');
+                }
+                return server;
             } catch (err) {
                 lastErr = err;
-                console.warn(`[BluetoothPrinter] GATT connect attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err);
+                console.warn(`[BluetoothPrinter] Connect attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err);
                 if (attempt < MAX_ATTEMPTS) {
-                    await new Promise(r => setTimeout(r, 400 * attempt));
+                    await new Promise(r => setTimeout(r, 500 * attempt));
                 }
             }
         }
         const msg = (lastErr as Error)?.message ?? 'Connection attempt failed';
-        // Wrap with a clearer, action-oriented message
         throw new Error(
             `Could not connect to "${device.name ?? 'printer'}". ` +
             `Most common causes: (1) the printer's iPrint app or another phone is still connected — close it first, ` +
