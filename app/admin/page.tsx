@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { useMenu, Order } from '@/lib/menuContext';
 import { MenuItem } from '@/lib/menuData';
 import PricingTable from '@/components/pricing/PricingTable';
+import PrinterPanel from '@/components/printer/PrinterPanel';
+import PrinterHeaderButton from '@/components/printer/PrinterHeaderButton';
+import { usePrinter } from '@/components/printer/usePrinter';
 import styles from './page.module.css';
 
 // List of available menu images (from /public/menu-images/)
@@ -79,7 +82,34 @@ export default function AdminPage() {
         updateBranding,
         paymentsEnabled,
         setPaymentsEnabled,
+        kotCopies,
+        billCopies,
+        setPrintCopies,
+        autoPrintOrders,
+        setAutoPrintOrders,
     } = useMenu();
+
+    // Bluetooth printer — connection state lives in the singleton client, this
+    // hook just subscribes to changes and exposes printKOT/printBill.
+    const printer = usePrinter();
+    const [printingId, setPrintingId] = useState<string | null>(null);
+    /** Loops over the configured copy count; each call awaits the previous so
+     *  the queue inside the printer client serializes BLE writes. */
+    const printNCopies = async (n: number, send: () => Promise<void>) => {
+        for (let i = 0; i < Math.max(1, n); i++) await send();
+    };
+    const handlePrintKOT = async (order: Order) => {
+        setPrintingId(order.orderId);
+        try { await printNCopies(kotCopies, () => printer.printKOT(order, restaurantName)); }
+        catch (e) { alert((e as Error).message); }
+        finally { setPrintingId(null); }
+    };
+    const handlePrintBill = async (order: Order) => {
+        setPrintingId(order.orderId);
+        try { await printNCopies(billCopies, () => printer.printBill(order, restaurantName)); }
+        catch (e) { alert((e as Error).message); }
+        finally { setPrintingId(null); }
+    };
 
     const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'rush-hour' | 'whatsapp'>('orders');
     const [menuSubTab, setMenuSubTab] = useState<'items' | 'categories' | 'modifiers'>('items');
@@ -270,20 +300,45 @@ export default function AdminPage() {
         URL.revokeObjectURL(url);
     }, []);
 
-    // Bell sound for new orders
+    // Bell sound + auto-print on new orders. We track the previous set of
+    // order IDs so we can identify *which* orders are new (count-only
+    // detection misses cases where orders both arrive and get cleared between
+    // ticks). On the first SSE load we just seed the set without ringing
+    // the bell — otherwise every page refresh would auto-print the entire
+    // backlog.
     const bellRef = useRef<HTMLAudioElement | null>(null);
-    const prevOrderCountRef = useRef<number | null>(null);
+    const prevOrderIdsRef = useRef<Set<string> | null>(null);
     useEffect(() => {
         bellRef.current = new Audio('/sounds/bell.mp3');
         bellRef.current.volume = 0.7;
     }, []);
     useEffect(() => {
-        const pendingCount = orders.filter(o => o.status === 'pending').length;
-        if (prevOrderCountRef.current !== null && pendingCount > prevOrderCountRef.current) {
-            bellRef.current?.play().catch(() => {});
+        const currentIds = new Set(orders.map(o => o.orderId));
+        const prevIds = prevOrderIdsRef.current;
+
+        // First load — seed silently
+        if (prevIds === null) {
+            prevOrderIdsRef.current = currentIds;
+            return;
         }
-        prevOrderCountRef.current = pendingCount;
-    }, [orders]);
+
+        const newOrders = orders.filter(o => !prevIds.has(o.orderId));
+        if (newOrders.length > 0) {
+            bellRef.current?.play().catch(() => {});
+            if (autoPrintOrders && printer.isConnected) {
+                // Fire and forget — printer client serializes writes internally
+                // so multiple new orders won't fight each other on the BLE link.
+                for (const order of newOrders) {
+                    for (let i = 0; i < kotCopies; i++) {
+                        printer.printKOT(order, restaurantName).catch(err => {
+                            console.warn('[admin] auto-print KOT failed', err);
+                        });
+                    }
+                }
+            }
+        }
+        prevOrderIdsRef.current = currentIds;
+    }, [orders, autoPrintOrders, printer, kotCopies, restaurantName]);
 
     const handleImageUpload = async (file: File) => {
         setIsUploading(true);
@@ -569,6 +624,7 @@ export default function AdminPage() {
                     </Link>
                 </div>
                 <div className={styles.rushHourToggle}>
+                    <PrinterHeaderButton />
                     <Link href="/admin/pricing" style={{
                         marginRight: '8px',
                         padding: '6px 12px',
@@ -753,6 +809,28 @@ export default function AdminPage() {
                                             <div className={styles.orderFooter}>
                                                 <span className={styles.orderTotal}>₹{order.totalAmount}</span>
                                                 <div className={styles.statusButtons}>
+                                                    {printer.isConnected && (
+                                                        <>
+                                                            <button
+                                                                className={styles.statusBtn}
+                                                                style={{ background: '#374151' }}
+                                                                onClick={() => handlePrintKOT(order)}
+                                                                disabled={printingId === order.orderId}
+                                                                title="Print Kitchen Order Ticket"
+                                                            >
+                                                                {printingId === order.orderId ? '…' : '🖨 KOT'}
+                                                            </button>
+                                                            <button
+                                                                className={styles.statusBtn}
+                                                                style={{ background: '#6b7280' }}
+                                                                onClick={() => handlePrintBill(order)}
+                                                                disabled={printingId === order.orderId}
+                                                                title="Print Bill"
+                                                            >
+                                                                {printingId === order.orderId ? '…' : '🖨 Bill'}
+                                                            </button>
+                                                        </>
+                                                    )}
                                                     {order.status === 'pending' && (
                                                         <button
                                                             className={styles.statusBtn}
@@ -1099,6 +1177,18 @@ export default function AdminPage() {
                                 </button>
                             </div>
                         </div>
+
+                        {/* Bluetooth printer */}
+                        <PrinterPanel
+                            restaurantName={restaurantName}
+                            className={styles.waInstructions}
+                            kotCopies={kotCopies}
+                            billCopies={billCopies}
+                            onCopiesChange={setPrintCopies}
+                            autoPrintOrders={autoPrintOrders}
+                            onAutoPrintChange={setAutoPrintOrders}
+                            onPrintStats={() => printer.printStats(orders, restaurantName)}
+                        />
 
                         {/* Branding */}
                         <div className={styles.waInstructions}>

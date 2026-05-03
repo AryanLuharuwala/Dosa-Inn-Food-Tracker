@@ -52,6 +52,9 @@ interface MenuContextType {
     restaurantName: string;
     tagline: string;
     paymentsEnabled: boolean;
+    kotCopies: number;
+    billCopies: number;
+    autoPrintOrders: boolean;
     toggleItemAvailability: (itemId: string) => void;
     updateItemPrice: (itemId: string, newPrice: number) => void;
     addMenuItem: (item: MenuItem) => void;
@@ -71,6 +74,8 @@ interface MenuContextType {
     refreshMenuState: () => void;
     updateBranding: (name: string, tagline: string) => Promise<void>;
     setPaymentsEnabled: (enabled: boolean) => Promise<void>;
+    setPrintCopies: (kot: number, bill: number) => Promise<void>;
+    setAutoPrintOrders: (enabled: boolean) => Promise<void>;
 }
 
 const MenuContext = createContext<MenuContextType | undefined>(undefined);
@@ -105,6 +110,9 @@ export function MenuProvider({ children }: { children: ReactNode }) {
     const [tagline, setTagline] = useState('100% Pure Veg');
     // Default false — server returns the persisted value on first settings load.
     const [paymentsEnabled, setPaymentsEnabledState] = useState(false);
+    const [kotCopies, setKotCopiesState] = useState(1);
+    const [billCopies, setBillCopiesState] = useState(1);
+    const [autoPrintOrders, setAutoPrintOrdersState] = useState(false);
 
     const loadResource = useCallback(async (resource: string) => {
         switch (resource) {
@@ -129,13 +137,25 @@ export function MenuProvider({ children }: { children: ReactNode }) {
                 break;
             }
             case 'settings': {
-                const settings = await dbGet<{ rushHourMode: boolean; rushHourItems: string[]; restaurantName?: string; tagline?: string; paymentsEnabled?: boolean }>('settings');
+                const settings = await dbGet<{
+                    rushHourMode: boolean;
+                    rushHourItems: string[];
+                    restaurantName?: string;
+                    tagline?: string;
+                    paymentsEnabled?: boolean;
+                    kotCopies?: number;
+                    billCopies?: number;
+                    autoPrintOrders?: boolean;
+                }>('settings');
                 if (settings) {
                     setRushHourModeState(settings.rushHourMode);
                     setRushHourItemsState(settings.rushHourItems);
                     if (settings.restaurantName) setRestaurantName(settings.restaurantName);
                     if (settings.tagline !== undefined) setTagline(settings.tagline);
                     if (settings.paymentsEnabled !== undefined) setPaymentsEnabledState(settings.paymentsEnabled);
+                    if (typeof settings.kotCopies === 'number') setKotCopiesState(settings.kotCopies);
+                    if (typeof settings.billCopies === 'number') setBillCopiesState(settings.billCopies);
+                    if (typeof settings.autoPrintOrders === 'boolean') setAutoPrintOrdersState(settings.autoPrintOrders);
                 }
                 break;
             }
@@ -268,6 +288,20 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await dbPost('settings_save', { settings: { rushHourMode, rushHourItems, restaurantName, tagline, paymentsEnabled: enabled } });
     }, [rushHourMode, rushHourItems, restaurantName, tagline]);
 
+    const setPrintCopies = useCallback(async (kot: number, bill: number) => {
+        const k = Math.max(1, Math.min(10, Math.round(kot)));
+        const b = Math.max(1, Math.min(10, Math.round(bill)));
+        setKotCopiesState(k);
+        setBillCopiesState(b);
+        // Server $set patches only these keys — other settings stay intact.
+        await dbPost('settings_save', { settings: { kotCopies: k, billCopies: b } });
+    }, []);
+
+    const setAutoPrintOrders = useCallback(async (enabled: boolean) => {
+        setAutoPrintOrdersState(enabled);
+        await dbPost('settings_save', { settings: { autoPrintOrders: enabled } });
+    }, []);
+
     // ── Modifier groups ───────────────────────────────────────────────────
 
     const upsertModifierGroup = useCallback(async (group: ModifierGroup) => {
@@ -315,6 +349,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
             menuItems, categories, modifierGroups, orders,
             rushHourMode, rushHourItems,
             restaurantName, tagline, paymentsEnabled,
+            kotCopies, billCopies, autoPrintOrders,
             toggleItemAvailability, updateItemPrice,
             addMenuItem, updateMenuItem, deleteMenuItem,
             addCategory, updateCategory, deleteCategory,
@@ -323,6 +358,8 @@ export function MenuProvider({ children }: { children: ReactNode }) {
             addOrder, updateOrderStatus,
             getAvailableItems, refreshMenuState, updateBranding,
             setPaymentsEnabled,
+            setPrintCopies,
+            setAutoPrintOrders,
         }}>
             {children}
         </MenuContext.Provider>

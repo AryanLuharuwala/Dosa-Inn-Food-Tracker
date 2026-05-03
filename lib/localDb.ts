@@ -389,6 +389,12 @@ export interface Settings {
     /** Master switch. When false, customers don't see PhonePe and pay at the
      *  counter — orders go straight to confirmation with paymentMethod='counter'. */
     paymentsEnabled?: boolean;
+    /** Copies the printer should produce per "Print KOT" click (default 1). */
+    kotCopies?: number;
+    /** Copies the printer should produce per "Print Bill" click (default 1). */
+    billCopies?: number;
+    /** When true and a printer is connected, every newly-arrived order auto-prints a KOT. */
+    autoPrintOrders?: boolean;
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -401,7 +407,15 @@ export async function getSettings(): Promise<Settings> {
         tagline: (doc?.tagline as string) ?? '100% Pure Veg',
         // Default OFF until PhonePe registration is complete — counter payment only.
         paymentsEnabled: (doc?.paymentsEnabled as boolean) ?? false,
+        kotCopies: clampCopies(doc?.kotCopies as number | undefined, 1),
+        billCopies: clampCopies(doc?.billCopies as number | undefined, 1),
+        autoPrintOrders: (doc?.autoPrintOrders as boolean) ?? false,
     };
+}
+
+function clampCopies(n: number | undefined, fallback: number): number {
+    if (typeof n !== 'number' || !Number.isFinite(n)) return fallback;
+    return Math.max(1, Math.min(10, Math.round(n)));
 }
 
 export async function saveSettings(s: Settings) {
