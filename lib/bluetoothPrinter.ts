@@ -332,6 +332,13 @@ class BluetoothPrinterClient {
         return typeof navigator !== 'undefined' && !!navigator.bluetooth;
     }
 
+    /** When the filtered picker doesn't show your printer (rare brand whose
+     *  name doesn't match our prefixes), call connectShowAll() to display
+     *  every nearby BLE device. Same connect+discovery flow after. */
+    async connectShowAll(): Promise<void> {
+        return this.connect({ showAll: true });
+    }
+
     isConnected(): boolean {
         return !!this.server?.connected && !!this.char;
     }
@@ -360,7 +367,7 @@ class BluetoothPrinterClient {
         this.listeners.forEach(l => l());
     }
 
-    async connect(): Promise<void> {
+    async connect(opts: { showAll?: boolean } = {}): Promise<void> {
         if (!this.isSupported()) {
             throw new Error('Web Bluetooth is not supported in this browser. Use Chrome/Edge on desktop or Chrome on Android.');
         }
@@ -370,10 +377,37 @@ class BluetoothPrinterClient {
 
         // requestDevice MUST be called inside the user-gesture stack — it
         // can only run once per click, so we keep it outside the retry loop.
-        const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: KNOWN_PRINTER_SERVICES,
-        });
+        //
+        // Default mode: filter by name prefix and known thermal-printer
+        // services so only printer-shaped devices appear in the picker.
+        // BlueZ on Linux drops some advertised service UUIDs from scan
+        // results, so name-prefix filters are the most reliable matcher.
+        // Multiple filters are OR'd together — a device only needs to
+        // match one to appear.
+        //
+        // Show-all mode: dump every nearby BLE device. Used when a user's
+        // printer isn't matching any of our filters.
+        const requestOptions = opts.showAll
+            ? { acceptAllDevices: true, optionalServices: KNOWN_PRINTER_SERVICES }
+            : {
+                filters: [
+                    { services: [CAT_PRINT_SRV] },     // cat-printer / iPrint family
+                    { namePrefix: 'SC0' },             // SC03h, SC04h
+                    { namePrefix: 'GB0' },             // GB02, GB01
+                    { namePrefix: 'MX0' },             // MX02, MX10
+                    { namePrefix: 'YHK' },             // YHK series
+                    { namePrefix: 'GP-' },             // Goojprt GP-58
+                    { namePrefix: 'PT-' },             // Goojprt PT-210
+                    { namePrefix: 'POS' },             // POS-58, POS-80
+                    { namePrefix: 'BT-' },             // BT-58, BT-100
+                    { namePrefix: 'ZJ-' },             // ZJ-58
+                    { namePrefix: 'HC0' },             // HC03
+                    { namePrefix: 'iPrint' },          // generic iPrint-app printers
+                    { namePrefix: 'Print' },           // catch-all
+                ],
+                optionalServices: KNOWN_PRINTER_SERVICES,
+            };
+        const device = await navigator.bluetooth.requestDevice(requestOptions);
 
         device.addEventListener('gattserverdisconnected', () => {
             this.server = null;

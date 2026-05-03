@@ -35,7 +35,7 @@ export default function PrinterPanel({
     onAutoPrintChange,
     onPrintStats,
 }: Props) {
-    const { isSupported, isConnected, deviceName, diagnostics, connect, disconnect, printTest } = usePrinter();
+    const { isSupported, isConnected, deviceName, diagnostics, connect, connectShowAll, disconnect, printTest } = usePrinter();
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [testStatus, setTestStatus] = useState<'idle' | 'printing' | 'sent'>('idle');
@@ -60,9 +60,19 @@ export default function PrinterPanel({
             // User cancelling the device picker is harmless — don't surface it.
             // The picker emits "User cancelled the requestDevice() chooser." or
             // a NotFoundError when no device is selected.
-            if (/cancel/i.test(msg) || /No matching|chooser/i.test(msg)) {
-                return;
-            }
+            if (/cancel/i.test(msg) || /No matching|chooser/i.test(msg)) return;
+            setError(msg);
+        }
+        finally { setBusy(false); }
+    };
+
+    const handleConnectShowAll = async () => {
+        setError(null);
+        setBusy(true);
+        try { await connectShowAll(); }
+        catch (e) {
+            const msg = (e as Error).message;
+            if (/cancel/i.test(msg) || /No matching|chooser/i.test(msg)) return;
             setError(msg);
         }
         finally { setBusy(false); }
@@ -118,16 +128,35 @@ export default function PrinterPanel({
                 }} aria-label={isConnected ? 'Connected' : 'Disconnected'} />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 {!isConnected ? (
-                    <button
-                        type="button"
-                        onClick={handleConnect}
-                        disabled={busy}
-                        style={btnPrimary}
-                    >
-                        {busy ? 'Connecting…' : 'Connect Printer'}
-                    </button>
+                    <>
+                        <button
+                            type="button"
+                            onClick={handleConnect}
+                            disabled={busy}
+                            style={btnPrimary}
+                        >
+                            {busy ? 'Connecting…' : 'Connect Printer'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleConnectShowAll}
+                            disabled={busy}
+                            style={{
+                                background: 'transparent',
+                                color: '#666',
+                                border: 'none',
+                                fontSize: '0.8rem',
+                                padding: '8px 4px',
+                                textDecoration: 'underline',
+                                cursor: busy ? 'wait' : 'pointer',
+                            }}
+                            title="Bypass the name-prefix filter and show every nearby BLE device"
+                        >
+                            don&apos;t see your printer?
+                        </button>
+                    </>
                 ) : (
                     <>
                         <button

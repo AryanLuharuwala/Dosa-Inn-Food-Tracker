@@ -22,6 +22,7 @@ export function usePrinter() {
     }, [client]);
 
     const connect = useCallback(async () => { await client.connect(); }, [client]);
+    const connectShowAll = useCallback(async () => { await client.connectShowAll(); }, [client]);
     const disconnect = useCallback(async () => { await client.disconnect(); }, [client]);
 
     const printTest = useCallback(async (restaurantName: string) => {
@@ -47,6 +48,7 @@ export function usePrinter() {
         protocol: client.getProtocol(),
         diagnostics: client.getDiagnostics(),
         connect,
+        connectShowAll,
         disconnect,
         printTest,
         printKOT,
