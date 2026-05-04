@@ -17,8 +17,9 @@
 import type { Order } from './localDb';
 import {
     CAT_PRINT_SRV, CAT_PRINT_TX, CAT_PRINT_RX, CAT_PRINT_RX2, CAT_PRINT_RX3,
-    warmupPackets,
+    warmupBundles,
     buildTestPacketsCat, buildKOTPacketsCat, buildBillPacketsCat, buildStatsPacketsCat,
+    type CatJob,
 } from './catPrinter';
 
 // ── ESC/POS byte builders ────────────────────────────────────────────────────
@@ -608,41 +609,36 @@ class BluetoothPrinterClient {
         return next;
     }
 
-    /** Send a list of pre-framed packets (cat-printer protocol). The whole
-     *  list runs as a single queued unit so two concurrent print jobs can't
-     *  interleave their bitmap rows. The optional `interPacketMs` adds a
-     *  small delay between consecutive packets — cat-printers will silently
-     *  drop bitmap rows if the local BLE controller fires them back-to-back
-     *  faster than the printer's RX buffer drains. The Python reference
-     *  uses 10ms between rows; 8ms is the same with a tiny safety margin. */
-    writeFramed(packets: Uint8Array[], interPacketMs = 8): Promise<void> {
+    // ── High-level print entry points — auto-route by protocol ──────────────
+
+    /** Replays the iPrint Wireshark capture's exact GATT op sequence:
+     *  warmup (combined info+state, then 0xBB, 100ms settle) → preamble as
+     *  one write → 50ms → bitmap rows with 10ms pacing → postamble as one
+     *  write → 500ms tail settle. The whole flow is enqueued as a single
+     *  unit so concurrent print calls can't interleave. */
+    private catPrint(job: CatJob): Promise<void> {
         const next = this.writeQueue.then(async () => {
-            for (let i = 0; i < packets.length; i++) {
-                await this.doWrite(packets[i]);
-                if (interPacketMs > 0 && i < packets.length - 1) {
-                    await new Promise(r => setTimeout(r, interPacketMs));
+            if (!this.warmedUp) {
+                const wu = warmupBundles();
+                await this.doWrite(wu.a);
+                await new Promise(r => setTimeout(r, 30));
+                await this.doWrite(wu.b);
+                await new Promise(r => setTimeout(r, 100));
+                this.warmedUp = true;
+            }
+            await this.doWrite(job.preamble);
+            await new Promise(r => setTimeout(r, 50));
+            for (let i = 0; i < job.rows.length; i++) {
+                await this.doWrite(job.rows[i]);
+                if (i < job.rows.length - 1) {
+                    await new Promise(r => setTimeout(r, 10));
                 }
             }
+            await this.doWrite(job.postamble);
+            await new Promise(r => setTimeout(r, 500));
         });
         this.writeQueue = next.catch(() => {});
         return next;
-    }
-
-    // ── High-level print entry points — auto-route by protocol ──────────────
-
-    /** First cat-protocol print of the session sends the warmup sequence
-     *  (GetDeviceInfo + GetDeviceState + 0xBB). Subsequent prints skip it.
-     *  Uses paced writes — cat-printer firmware drops packets if BLE writes
-     *  arrive faster than its buffer can drain. */
-    private async catPrint(jobPackets: Uint8Array[]): Promise<void> {
-        if (!this.warmedUp) {
-            // Warmup gets a longer pause before the actual job — gives the
-            // printer time to ack via notifications before we start printing.
-            await this.writeFramed(warmupPackets(), 30);
-            await new Promise(r => setTimeout(r, 100));
-            this.warmedUp = true;
-        }
-        await this.writeFramed(jobPackets, 8);
     }
 
     async printTest(restaurantName: string): Promise<void> {

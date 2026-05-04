@@ -78,7 +78,19 @@ function frame(cmd: Cmd, payload: Uint8Array): Uint8Array {
 
 const u8  = (...b: number[]) => new Uint8Array(b);
 const u16 = (n: number) => new Uint8Array([n & 0xff, (n >> 8) & 0xff]);
-const u32 = (n: number) => new Uint8Array([n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]);
+
+/** Concatenate frames into a single buffer so the BLE driver issues one write
+ *  per group. The Wireshark capture shows iPrint sending preamble/postamble
+ *  as one GATT op each; some firmware drops frames that arrive as separate
+ *  writes with inter-packet gaps. */
+function bundle(...frames: Uint8Array[]): Uint8Array {
+    let total = 0;
+    for (const f of frames) total += f.length;
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const f of frames) { out.set(f, off); off += f.length; }
+    return out;
+}
 
 // ── Print-job builders ───────────────────────────────────────────────────────
 
@@ -96,35 +108,42 @@ const LATTICE_START = new Uint8Array([0xaa, 0x55, 0x17, 0x38, 0x44, 0x5f, 0x5f, 
 const LATTICE_END   = new Uint8Array([0xaa, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17]);
 
 /** One-shot session warmup — sent on the first print after connecting,
- *  *after* notifications on AE02/AE04/AE05 have been subscribed. */
-export function warmupPackets(): Uint8Array[] {
-    return [
-        frame(Cmd.GetDeviceInfo,  u8(0x00)),
-        frame(Cmd.GetDeviceState, u8(0x00)),
-        frame(Cmd.Warmup,         u8(0x01)),
-    ];
+ *  *after* notifications on AE02/AE04/AE05 have been subscribed. The
+ *  Wireshark capture sends GetDeviceInfo+GetDeviceState as one combined
+ *  write, then 0xBB as a second write. */
+export function warmupBundles(): { a: Uint8Array; b: Uint8Array } {
+    return {
+        a: bundle(
+            frame(Cmd.GetDeviceInfo,  u8(0x00)),
+            frame(Cmd.GetDeviceState, u8(0x00)),
+        ),
+        b: frame(Cmd.Warmup, u8(0x01)),
+    };
 }
 
-function preamble(): Uint8Array[] {
-    return [
+/** Pre-bitmap header — single concatenated write to match the iPrint capture.
+ *  Energy is u16 (2-byte payload) per Wireshark; cat-printer SDK uses u32 but
+ *  iPrint firmware ignores or rejects the longer form. */
+function preamble(): Uint8Array {
+    return bundle(
         frame(Cmd.GetDeviceState, u8(0x00)),
         frame(Cmd.SetDpi,         u8(0x33)),
         frame(Cmd.Lattice,        LATTICE_START),
-        frame(Cmd.Energy,         u32(DEFAULT_ENERGY)),
-        frame(Cmd.ApplyEnergy,    u8(0x00)),  // payload 0x00 per Wireshark, NOT 0x01
+        frame(Cmd.Energy,         u16(DEFAULT_ENERGY)),
+        frame(Cmd.ApplyEnergy,    u8(0x00)),
         frame(Cmd.Speed,          u8(DEFAULT_SPEED)),
-    ];
+    );
 }
 
-function postamble(): Uint8Array[] {
-    return [
-        frame(Cmd.Speed,          u8(0x19)),  // slow speed (25) for final feed
+function postamble(): Uint8Array {
+    return bundle(
+        frame(Cmd.Speed,          u8(0x19)),
         frame(Cmd.Feed,           u16(FINISH_FEED_LINES)),
         frame(Cmd.Feed,           u16(FINISH_FEED_LINES)),
         frame(Cmd.Speed,          u8(0x19)),
         frame(Cmd.Lattice,        LATTICE_END),
         frame(Cmd.GetDeviceState, u8(0x00)),
-    ];
+    );
 }
 
 /** Convert canvas image data to a 1-bit-per-pixel bitmap. Each output byte is
@@ -151,19 +170,14 @@ function imageDataToBitmap(img: ImageData): Uint8Array {
 }
 
 function bitmapToRowPackets(bitmap: Uint8Array, height: number): Uint8Array[] {
-    const packets: Uint8Array[] = [];
+    // Send every row as a Bitmap frame, including blank rows. The Wireshark
+    // capture shows iPrint emitting an unbroken bitmap stream between
+    // lattice-start and the footer; injecting Feed mid-stream caused the
+    // following row to be dropped on SC03h-class firmware.
+    const packets: Uint8Array[] = new Array(height);
     for (let y = 0; y < height; y++) {
         const start = y * BYTES_PER_ROW;
-        const row = bitmap.slice(start, start + BYTES_PER_ROW);
-        // Skip blank rows — printer interprets as feed, faster + saves paper
-        let blank = true;
-        for (let i = 0; i < row.length; i++) if (row[i] !== 0) { blank = false; break; }
-        if (blank) {
-            // Cat printers respond best to occasional feeds for blank rows
-            packets.push(frame(Cmd.Feed, u16(1)));
-            continue;
-        }
-        packets.push(frame(Cmd.Bitmap, row));
+        packets[y] = frame(Cmd.Bitmap, bitmap.slice(start, start + BYTES_PER_ROW));
     }
     return packets;
 }
@@ -259,19 +273,27 @@ function renderDoc(doc: DocLine[]): { data: Uint8Array; height: number } {
     return { data: imageDataToBitmap(img), height: h };
 }
 
-/** Wraps render+packetize+preamble/postamble into a complete print job. */
-export function buildPrintJob(doc: DocLine[]): Uint8Array[] {
+/** Structured print job. The driver writes `preamble` as one BLE op, then
+ *  each `rows` packet sequentially with inter-row pacing, then `postamble`
+ *  as one BLE op. Matches the iPrint capture's GATT op boundaries. */
+export interface CatJob {
+    preamble: Uint8Array;
+    rows: Uint8Array[];
+    postamble: Uint8Array;
+}
+
+export function buildPrintJob(doc: DocLine[]): CatJob {
     const { data, height } = renderDoc(doc);
-    return [
-        ...preamble(),
-        ...bitmapToRowPackets(data, height),
-        ...postamble(),
-    ];
+    return {
+        preamble: preamble(),
+        rows: bitmapToRowPackets(data, height),
+        postamble: postamble(),
+    };
 }
 
 // ── High-level receipt builders ──────────────────────────────────────────────
 
-export function buildTestPacketsCat(restaurantName: string): Uint8Array[] {
+export function buildTestPacketsCat(restaurantName: string): CatJob {
     return buildPrintJob([
         { kind: 'text', text: restaurantName, bold: true, align: 'center', size: 'huge' },
         { kind: 'text', text: 'PRINTER TEST', align: 'center', bold: true },
@@ -285,7 +307,7 @@ export function buildTestPacketsCat(restaurantName: string): Uint8Array[] {
     ]);
 }
 
-export function buildKOTPacketsCat(order: Order, restaurantName: string): Uint8Array[] {
+export function buildKOTPacketsCat(order: Order, restaurantName: string): CatJob {
     const label =
         order.orderType === 'preorder' ? 'PARCEL' :
         order.tableNumber && order.tableNumber !== '0' ? `TABLE ${order.tableNumber}` :
@@ -326,7 +348,7 @@ function padCols(left: string, right: string, totalWidth = 32): string {
     return left + ' '.repeat(space) + right;
 }
 
-export function buildBillPacketsCat(order: Order, restaurantName: string): Uint8Array[] {
+export function buildBillPacketsCat(order: Order, restaurantName: string): CatJob {
     const time = new Date(order.timestamp).toLocaleString('en-IN', {
         day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
     });
@@ -371,7 +393,7 @@ export function buildBillPacketsCat(order: Order, restaurantName: string): Uint8
     return buildPrintJob(doc);
 }
 
-export function buildStatsPacketsCat(orders: Order[], restaurantName: string): Uint8Array[] {
+export function buildStatsPacketsCat(orders: Order[], restaurantName: string): CatJob {
     const today = new Date();
     const todayStr = today.toDateString();
     const todayOrders = orders.filter(o => new Date(o.timestamp).toDateString() === todayStr);
