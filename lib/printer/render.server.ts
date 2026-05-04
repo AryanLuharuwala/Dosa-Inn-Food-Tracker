@@ -123,7 +123,7 @@ export async function renderDocServer(doc: DocLine[]): Promise<{ data: Buffer; w
                 try {
                     const img = await loadImage(src as Parameters<typeof loadImage>[0]);
                     const x = Math.round((PAPER_WIDTH - imgSize) / 2);
-                    ctx.drawImage(img, x, y, imgSize, imgSize);
+                    ctx.drawImage(img as unknown as CanvasImageSource, x, y, imgSize, imgSize);
                 } catch {
                     // image load failed — leave blank space
                 }
