@@ -5,6 +5,9 @@
 
 /* Header */
 .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -12,6 +15,13 @@
     background-color: var(--color-bg-card);
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     gap: var(--space-md);
+    transition: box-shadow 0.2s, background-color 0.2s;
+}
+
+.headerScrolled {
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+    background-color: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
 }
 
 .headerLeft {

@@ -297,9 +297,9 @@ export default function CartPage() {
                         ) : (
                             <button
                                 className={styles.checkoutBtn}
-                                onClick={() => router.push('/checkout')}
+                                onClick={() => router.push('/order-summary')}
                             >
-                                <span>Proceed to Pay</span>
+                                <span>Proceed</span>
                                 <span className={styles.checkoutAmount}>₹{isShared ? grandTotal : totalAmount}</span>
                             </button>
                         )}

@@ -254,3 +254,18 @@
 .ctaBtn:active {
     transform: translateY(0);
 }
+
+.ctaBtn:disabled {
+    background: linear-gradient(135deg, #aaa 0%, #888 100%);
+    box-shadow: none;
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.closedNote {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}

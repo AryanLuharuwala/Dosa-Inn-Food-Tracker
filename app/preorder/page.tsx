@@ -201,16 +201,17 @@ export default function PreorderPage() {
                 </div>
 
                 {/* CTA */}
-                {!isAfterHours && (
-                    <div className={styles.ctaWrapper}>
-                        <button className={styles.ctaBtn} onClick={handleContinue}>
-                            Start Ordering
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        </button>
-                    </div>
-                )}
+                <div className={styles.ctaWrapper}>
+                    <button className={styles.ctaBtn} onClick={handleContinue} disabled={isAfterHours}>
+                        Start Ordering
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </button>
+                    {isAfterHours && (
+                        <p className={styles.closedNote}>Preorders open 10 AM – 10 PM</p>
+                    )}
+                </div>
             </div>
         </>
     );

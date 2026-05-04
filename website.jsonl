@@ -1,0 +1,5 @@
+{"t": 0.0001, "kind": "start", "mode": "website"}
+{"t": 0.0002, "kind": "scan_begin", "target": "71:BA:E3:49:2D:1B"}
+{"t": 8.0369, "kind": "scan_found", "address": "71:BA:E3:49:2D:1B", "name": "SC03h-BA71"}
+{"t": 13.5281, "kind": "error", "type": "BleakDBusError", "message": "[org.bluez.Error.Failed] br-connection-refused", "repr": "BleakDBusError('org.bluez.Error.Failed', 'br-connection-refused')"}
+{"t": 13.5282, "kind": "hint", "text": "BlueZ tried Bluetooth Classic (BR/EDR) instead of LE and it failed. The printer's LE side is fine \u2014 Linux just picks the wrong transport. Fix: sudo btmgmt bredr off  (then retry trace, then sudo btmgmt bredr on). Or unpair: bluetoothctl -- remove 71:BA:E3:49:2D:1B"}

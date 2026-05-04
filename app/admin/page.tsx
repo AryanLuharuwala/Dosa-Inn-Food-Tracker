@@ -124,6 +124,12 @@ export default function AdminPage() {
     const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'rush-hour' | 'whatsapp'>('orders');
     const [menuSubTab, setMenuSubTab] = useState<'items' | 'categories' | 'modifiers'>('items');
     const [rushHourSearch, setRushHourSearch] = useState('');
+    const [headerScrolled, setHeaderScrolled] = useState(false);
+    useEffect(() => {
+        const onScroll = () => setHeaderScrolled(window.scrollY > 10);
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, []);
 
     // Category CRUD state
     const [showCatModal, setShowCatModal] = useState(false);
@@ -619,7 +625,7 @@ export default function AdminPage() {
     return (
         <div className={styles.container}>
             {/* Header */}
-            <header className={styles.header}>
+            <header className={`${styles.header}${headerScrolled ? ` ${styles.headerScrolled}` : ''}`}>
                 <div className={styles.headerLeft}>
                     <Link href="/" className={styles.backLink}>← Home</Link>
                     <Link href="/" className={styles.logoLink}>
