@@ -126,6 +126,33 @@ class Tracer:
 
 # ── Connect + subscribe (shared) ─────────────────────────────────────────────
 
+def explain_connect_error(e: Exception, addr: str) -> str:
+    """Decode common bleak/BlueZ connect failures into an actionable hint.
+    Same heuristics as scripts/printer_probe.py."""
+    msg = str(e) or repr(e)
+    low = msg.lower()
+    if 'br-connection-refused' in low or 'bredr' in low:
+        return (
+            "BlueZ tried Bluetooth Classic (BR/EDR) instead of LE and it failed. "
+            "The printer's LE side is fine — Linux just picks the wrong transport. "
+            f"Fix: sudo btmgmt bredr off  (then retry trace, then sudo btmgmt bredr on). "
+            f"Or unpair: bluetoothctl -- remove {addr}"
+        )
+    if 'le-connection-abort-by-local' in low:
+        return "Adapter aborted the LE handshake. Restart bluetooth: sudo systemctl restart bluetooth"
+    if 'notready' in low.replace(' ', ''):
+        return "BlueZ adapter not ready — bluetoothctl power on"
+    if 'in progress' in low or 'already' in low:
+        return "Previous connection still pending — wait a few seconds and retry"
+    if 'timed out' in low or 'timeout' in low:
+        return (
+            "Connect timed out. Most common cause on Linux is the BR/EDR fallback — "
+            "sudo btmgmt bredr off, retry, sudo btmgmt bredr on. "
+            "Also try unpairing in OS Bluetooth settings."
+        )
+    return ""
+
+
 async def resolve(target: str, tr: Tracer):
     target_lower = target.lower()
     tr.emit('scan_begin', target=target)
@@ -362,7 +389,15 @@ async def main():
         else:
             await run_website(target, tr)
     except Exception as e:
-        tr.emit('error', message=str(e))
+        # str(e) is sometimes empty on bleak exceptions — capture type and
+        # repr too so the trace file has enough info to debug from.
+        tr.emit('error',
+                type=type(e).__name__,
+                message=str(e),
+                repr=repr(e))
+        hint = explain_connect_error(e, target)
+        if hint:
+            tr.emit('hint', text=hint)
         raise
     finally:
         tr.close()
