@@ -51,7 +51,7 @@ function mask(key: string, val: string): string {
 
 // GET — return current values from process.env (works on both local and Azure)
 export async function GET(req: NextRequest) {
-    if (!isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!await isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const result: Record<string, string> = {};
     for (const key of EDITABLE_KEYS) {
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
 
 // POST — update one or more editable keys
 export async function POST(req: NextRequest) {
-    if (!isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!await isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json() as Record<string, string>;
 

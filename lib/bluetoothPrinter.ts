@@ -15,6 +15,7 @@
  */
 
 import type { Order } from './localDb';
+import type { BillTemplate } from './billTemplate';
 import {
     CAT_PRINT_SRV, CAT_PRINT_TX, CAT_PRINT_RX, CAT_PRINT_RX2, CAT_PRINT_RX3,
     warmupBundles,
@@ -197,6 +198,145 @@ export function buildBill(order: Order, restaurantName: string): Uint8Array {
         CMD.alignLeft,
         CMD.feedAndCut,
     );
+}
+
+/** Build ESC/POS QR code command block for a URL string. */
+function buildQrCode(url: string): Uint8Array {
+    const data = new TextEncoder().encode(url);
+    const dataLen = data.length + 3; // +3 for the cn,fn,m bytes
+    const pL = dataLen & 0xFF;
+    const pH = (dataLen >> 8) & 0xFF;
+    return concat(
+        // Set model 2
+        b(GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00),
+        // Set size (cell size = 4, range 1–16)
+        b(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x04),
+        // Set error correction level M
+        b(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31),
+        // Store data
+        b(GS, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30),
+        data,
+        // Print
+        b(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30),
+    );
+}
+
+/** Template-aware bill builder. Falls back to default layout when no template. */
+export function buildBillFromTemplate(
+    order: Order,
+    restaurantName: string,
+    tagline: string,
+    tmpl: BillTemplate,
+): Uint8Array {
+    const out: Uint8Array[] = [];
+    out.push(CMD.init);
+
+    // ── Header ────────────────────────────────────────────────────────────────
+    const nameSize = {
+        sm: CMD.sizeNormal,
+        md: CMD.sizeWide,
+        lg: CMD.sizeTall,
+        xl: CMD.sizeLarge,
+    }[tmpl.header.restaurantNameSize] ?? CMD.sizeLarge;
+
+    out.push(CMD.alignCenter, CMD.boldOn, nameSize);
+    out.push(txt(restaurantName), NL_BYTES);
+    out.push(CMD.sizeNormal, CMD.boldOff);
+
+    if (tmpl.header.showTagline) {
+        const tl = tmpl.header.taglineOverride || tagline;
+        if (tl) out.push(txt(tl), NL_BYTES);
+    }
+    if (tmpl.header.showDivider) out.push(CMD.alignLeft, divider());
+    else out.push(CMD.alignLeft, NL_BYTES);
+
+    // ── Order Info ────────────────────────────────────────────────────────────
+    if (tmpl.orderInfo.showToken) out.push(txt(`Token: ${order.tokenNumber}`), NL_BYTES);
+    if (tmpl.orderInfo.showOrderId) out.push(txt(`Order: ${order.orderId}`), NL_BYTES);
+    if (tmpl.orderInfo.showTable && order.tableNumber && order.tableNumber !== '0') {
+        out.push(txt(`Table: ${order.tableNumber}`), NL_BYTES);
+    }
+    if (tmpl.orderInfo.showDateTime) {
+        const time = new Date(order.timestamp).toLocaleString('en-IN', {
+            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true,
+        });
+        out.push(txt(`Time:  ${time}`), NL_BYTES);
+    }
+    if (tmpl.orderInfo.showCustomerName && order.customerName) {
+        out.push(txt(`Name:  ${order.customerName}`), NL_BYTES);
+    }
+    out.push(divider());
+
+    // ── Items ─────────────────────────────────────────────────────────────────
+    const itemSizeCmd = {
+        sm: CMD.sizeNormal,
+        md: CMD.sizeNormal,
+        lg: CMD.sizeWide,
+    }[tmpl.items.fontSize] ?? CMD.sizeNormal;
+
+    out.push(itemSizeCmd);
+    let totalUnits = 0;
+    for (const it of order.items) {
+        const name = it.menuItem.name.length > 20 ? it.menuItem.name.slice(0, 20) : it.menuItem.name;
+        if (tmpl.items.showPrices) {
+            out.push(txt(pad(`${it.quantity} x ${name}`, `Rs.${it.totalPrice}`)), NL_BYTES);
+        } else {
+            out.push(txt(`${it.quantity} x ${name}`), NL_BYTES);
+        }
+        totalUnits += it.quantity;
+        if (tmpl.items.showAddOns) {
+            for (const a of it.selectedAddOns ?? []) {
+                if (tmpl.items.showPrices) {
+                    out.push(txt(pad(`   + ${a.name}`, `Rs.${a.price}`)), NL_BYTES);
+                } else {
+                    out.push(txt(`   + ${a.name}`), NL_BYTES);
+                }
+            }
+        }
+    }
+    out.push(CMD.sizeNormal);
+    out.push(divider());
+
+    // ── Total ─────────────────────────────────────────────────────────────────
+    const totalSizeCmd = {
+        md: CMD.sizeTall,
+        lg: CMD.sizeLarge,
+        xl: CMD.sizeLarge,
+    }[tmpl.total.fontSize] ?? CMD.sizeLarge;
+
+    out.push(CMD.boldOn, totalSizeCmd);
+    out.push(txt(pad('TOTAL', `Rs.${order.totalAmount}`)), NL_BYTES);
+    out.push(CMD.sizeNormal, CMD.boldOff);
+
+    if (tmpl.total.showItemCount) out.push(txt(`Items: ${totalUnits}`), NL_BYTES);
+    if (tmpl.total.showPaymentMethod) {
+        const payLine = order.paymentMethod === 'counter'
+            ? '** PAY AT COUNTER **'
+            : order.paymentMethod === 'online' ? '** PAID ONLINE **' : '';
+        if (payLine) {
+            out.push(NL_BYTES, CMD.alignCenter, CMD.boldOn, txt(payLine), NL_BYTES, CMD.boldOff, CMD.alignLeft);
+        }
+    }
+
+    // ── Footer ────────────────────────────────────────────────────────────────
+    if (tmpl.footer.customMessage || tmpl.footer.showQrCode || tmpl.footer.footerNote) {
+        out.push(NL_BYTES);
+    }
+    if (tmpl.footer.customMessage) {
+        out.push(CMD.alignCenter, txt(tmpl.footer.customMessage), NL_BYTES, CMD.alignLeft);
+    }
+    if (tmpl.footer.showQrCode && tmpl.footer.qrUrl) {
+        out.push(CMD.alignCenter);
+        out.push(buildQrCode(tmpl.footer.qrUrl));
+        if (tmpl.footer.qrLabel) out.push(txt(tmpl.footer.qrLabel), NL_BYTES);
+        out.push(CMD.alignLeft);
+    }
+    if (tmpl.footer.footerNote) {
+        out.push(CMD.alignCenter, txt(tmpl.footer.footerNote), NL_BYTES, CMD.alignLeft);
+    }
+
+    out.push(CMD.feedAndCut);
+    return concat(...out);
 }
 
 /** Today's summary: revenue, order count, top sellers, status breakdown.
@@ -655,7 +795,13 @@ class BluetoothPrinterClient {
         return this.write(buildKOT(order, restaurantName));
     }
 
-    async printBill(order: Order, restaurantName: string): Promise<void> {
+    async printBill(order: Order, restaurantName: string, opts?: { template?: BillTemplate; tagline?: string }): Promise<void> {
+        if (opts?.template) {
+            // Template-driven path (ESC/POS only; cat-printer falls through to legacy)
+            if (this.protocol !== 'catprinter') {
+                return this.write(buildBillFromTemplate(order, restaurantName, opts.tagline ?? '', opts.template));
+            }
+        }
         if (this.protocol === 'catprinter') {
             return this.catPrint(buildBillPacketsCat(order, restaurantName));
         }

@@ -6,7 +6,7 @@ const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 export async function POST(req: NextRequest) {
-    if (!isAdminRequest(req)) {
+    if (!await isAdminRequest(req)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

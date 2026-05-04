@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getPrinterClient } from '@/lib/bluetoothPrinter';
 import type { Order } from '@/lib/localDb';
+import type { BillTemplate } from '@/lib/billTemplate';
 
 /**
  * Subscribes to the singleton printer client. The connection survives
@@ -33,8 +34,8 @@ export function usePrinter() {
         await client.printKOT(order, restaurantName);
     }, [client]);
 
-    const printBill = useCallback(async (order: Order, restaurantName: string) => {
-        await client.printBill(order, restaurantName);
+    const printBill = useCallback(async (order: Order, restaurantName: string, opts?: { template?: BillTemplate; tagline?: string }) => {
+        await client.printBill(order, restaurantName, opts);
     }, [client]);
 
     const printStats = useCallback(async (orders: Order[], restaurantName: string) => {

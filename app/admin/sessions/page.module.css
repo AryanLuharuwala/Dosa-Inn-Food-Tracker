@@ -1,0 +1,123 @@
+.page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 16px;
+    font-family: sans-serif;
+    color: #f1f5f9;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 1.6rem;
+    flex: 1;
+}
+
+.back {
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.back:hover { color: #f1f5f9; }
+
+.error {
+    background: #450a0a;
+    color: #fca5a5;
+    border: 1px solid #991b1b;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+}
+
+.empty {
+    color: #64748b;
+    font-style: italic;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.table th {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid #334155;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.table td {
+    padding: 12px 12px;
+    border-bottom: 1px solid #1e293b;
+    vertical-align: middle;
+}
+
+.currentRow td { background: #0f172a; }
+
+.device {
+    font-weight: 500;
+}
+
+.badge {
+    display: inline-block;
+    margin-left: 8px;
+    background: #1d4ed8;
+    color: #bfdbfe;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ip {
+    color: #94a3b8;
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+
+.time {
+    color: #64748b;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.revokeBtn {
+    background: #7f1d1d;
+    color: #fca5a5;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.revokeBtn:hover:not(:disabled) { background: #991b1b; }
+.revokeBtn:disabled { opacity: 0.5; cursor: default; }
+
+.revokeAllBtn {
+    background: #7f1d1d;
+    color: #fca5a5;
+    border: 1px solid #991b1b;
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.revokeAllBtn:hover:not(:disabled) { background: #991b1b; }
+.revokeAllBtn:disabled { opacity: 0.5; cursor: default; }

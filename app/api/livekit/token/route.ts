@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminRequest } from '@/lib/apiAuth';
 
 export async function GET(req: NextRequest) {
-    if (!isAdminRequest(req)) {
+    if (!await isAdminRequest(req)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const room = req.nextUrl.searchParams.get('room') || 'rocky-da-adda-main';

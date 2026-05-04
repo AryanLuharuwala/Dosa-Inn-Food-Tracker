@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { isAdminRequest } from '@/lib/apiAuth';
 
 const WA_SERVICE = `http://127.0.0.1:${process.env.WA_SERVICE_PORT || 3478}`;
 
@@ -8,17 +8,11 @@ async function waFetch(path: string, init?: RequestInit) {
     return res;
 }
 
-function isAdmin(req: NextRequest) {
-    // Same cookie the admin login sets
-    const cookieStore = req.cookies;
-    return cookieStore.get('admin_session')?.value === 'authenticated';
-}
-
 const ALLOWED_GET_ACTIONS = new Set(['status', 'qr', 'logs']);
 
 // GET /api/whatsapp?action=status|qr|logs
 export async function GET(req: NextRequest) {
-    if (!isAdmin(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!await isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const action = req.nextUrl.searchParams.get('action') ?? 'status';
     if (!ALLOWED_GET_ACTIONS.has(action)) {
@@ -35,7 +29,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/whatsapp   body: { action: 'send'|'logout', to?, message? }
 export async function POST(req: NextRequest) {
-    if (!isAdmin(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!await isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
     const { action } = body;

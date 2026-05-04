@@ -1,7 +1,10 @@
-import { NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { validateAndTouch } from '@/lib/adminSessions';
 
-export function isAdminRequest(req: NextRequest): boolean {
-    return req.cookies.get('admin_session')?.value === 'authenticated';
+export async function isAdminRequest(req: NextRequest): Promise<boolean> {
+    const token = req.cookies.get('admin_session')?.value ?? '';
+    if (!token) return false;
+    return validateAndTouch(token, getClientIp(req));
 }
 
 export function getVisitorId(req: NextRequest): string | null {

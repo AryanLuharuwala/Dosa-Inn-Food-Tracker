@@ -455,6 +455,25 @@
     background-color: var(--color-primary-dark);
 }
 
+.removeOrderBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background-color: #ef4444;
+    color: white;
+    border-radius: 50%;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.removeOrderBtn:hover {
+    background-color: #dc2626;
+    transform: scale(1.1);
+}
+
 /* Menu Tab */
 .menuTab {}
 

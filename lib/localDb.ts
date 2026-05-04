@@ -367,6 +367,12 @@ export async function appendOrder(order: Order) {
     await logOrder({ event: 'order_placed', orderId: order.orderId, amount: order.totalAmount, items: order.items.length });
 }
 
+export async function deleteOrderById(orderId: string): Promise<boolean> {
+    const db = await getDb();
+    const res = await db.collection('orders').deleteOne({ orderId });
+    return res.deletedCount > 0;
+}
+
 export async function updateOrderStatus(
     orderId: string,
     status: Order['status'],
@@ -395,6 +401,8 @@ export interface Settings {
     billCopies?: number;
     /** When true and a printer is connected, every newly-arrived order auto-prints a KOT. */
     autoPrintOrders?: boolean;
+    /** Visual bill template configuration set via the bill editor. */
+    billTemplate?: import('./billTemplate').BillTemplate;
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -410,6 +418,7 @@ export async function getSettings(): Promise<Settings> {
         kotCopies: clampCopies(doc?.kotCopies as number | undefined, 1),
         billCopies: clampCopies(doc?.billCopies as number | undefined, 1),
         autoPrintOrders: (doc?.autoPrintOrders as boolean) ?? false,
+        billTemplate: (doc?.billTemplate as import('./billTemplate').BillTemplate) ?? undefined,
     };
 }
 

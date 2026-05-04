@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { menuItems as initialMenuItems, MenuItem, categories as initialCategories, Category } from './menuData';
 import { OrderType, PreorderDetails } from './cartContext';
+import { BillTemplate, DEFAULT_BILL_TEMPLATE } from './billTemplate';
 
 export interface Order {
     orderId: string;
@@ -70,12 +71,15 @@ interface MenuContextType {
     setRushHourItems: (itemIds: string[]) => void;
     addOrder: (order: Omit<Order, 'status'>) => void;
     updateOrderStatus: (orderId: string, status: Order['status'], items?: Order['items']) => void;
+    deleteOrder: (orderId: string) => void;
     getAvailableItems: () => MenuItem[];
     refreshMenuState: () => void;
     updateBranding: (name: string, tagline: string) => Promise<void>;
     setPaymentsEnabled: (enabled: boolean) => Promise<void>;
     setPrintCopies: (kot: number, bill: number) => Promise<void>;
     setAutoPrintOrders: (enabled: boolean) => Promise<void>;
+    billTemplate: BillTemplate;
+    saveBillTemplate: (template: BillTemplate) => Promise<void>;
 }
 
 const MenuContext = createContext<MenuContextType | undefined>(undefined);
@@ -113,6 +117,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
     const [kotCopies, setKotCopiesState] = useState(1);
     const [billCopies, setBillCopiesState] = useState(1);
     const [autoPrintOrders, setAutoPrintOrdersState] = useState(false);
+    const [billTemplate, setBillTemplateState] = useState<BillTemplate>(DEFAULT_BILL_TEMPLATE);
 
     const loadResource = useCallback(async (resource: string) => {
         switch (resource) {
@@ -146,6 +151,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
                     kotCopies?: number;
                     billCopies?: number;
                     autoPrintOrders?: boolean;
+                    billTemplate?: BillTemplate;
                 }>('settings');
                 if (settings) {
                     setRushHourModeState(settings.rushHourMode);
@@ -156,6 +162,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
                     if (typeof settings.kotCopies === 'number') setKotCopiesState(settings.kotCopies);
                     if (typeof settings.billCopies === 'number') setBillCopiesState(settings.billCopies);
                     if (typeof settings.autoPrintOrders === 'boolean') setAutoPrintOrdersState(settings.autoPrintOrders);
+                    if (settings.billTemplate) setBillTemplateState(settings.billTemplate);
                 }
                 break;
             }
@@ -302,6 +309,11 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await dbPost('settings_save', { settings: { autoPrintOrders: enabled } });
     }, []);
 
+    const saveBillTemplate = useCallback(async (template: BillTemplate) => {
+        setBillTemplateState(template);
+        await dbPost('settings_save', { settings: { billTemplate: template } });
+    }, []);
+
     // ── Modifier groups ───────────────────────────────────────────────────
 
     const upsertModifierGroup = useCallback(async (group: ModifierGroup) => {
@@ -339,6 +351,11 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await dbPost('order_status', { orderId, status, ...(items ? { items } : {}) });
     }, []);
 
+    const deleteOrder = useCallback(async (orderId: string) => {
+        setOrders(prev => prev.filter(o => o.orderId !== orderId));
+        await dbPost('order_delete', { orderId });
+    }, []);
+
     // ── Utilities ─────────────────────────────────────────────────────────
 
     const getAvailableItems = useCallback(() => menuItems.filter(i => i.isAvailable), [menuItems]);
@@ -355,7 +372,8 @@ export function MenuProvider({ children }: { children: ReactNode }) {
             addCategory, updateCategory, deleteCategory,
             upsertModifierGroup, deleteModifierGroup,
             setRushHourMode, toggleRushHourItem, setRushHourItems,
-            addOrder, updateOrderStatus,
+            addOrder, updateOrderStatus, deleteOrder,
+            billTemplate, saveBillTemplate,
             getAvailableItems, refreshMenuState, updateBranding,
             setPaymentsEnabled,
             setPrintCopies,

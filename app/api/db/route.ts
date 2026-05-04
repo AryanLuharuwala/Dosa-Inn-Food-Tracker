@@ -4,6 +4,7 @@ import {
     getCategories, saveCategories,
     getModifierGroups, upsertModifierGroup, deleteModifierGroupById,
     getOrders, appendOrder, updateOrderStatus as dbUpdateOrderStatus,
+    deleteOrderById,
     findOrderByMerchantOrderId,
     getSettings, saveSettings,
     getChefs, saveChefs,
@@ -21,7 +22,7 @@ const ADMIN_ONLY = new Set([
     'menu_update_item', 'menu_add_item', 'menu_delete_item',
     'category_add', 'category_update', 'category_delete',
     'modifier_group_upsert', 'modifier_group_delete',
-    'order_status',
+    'order_status', 'order_delete',
     'settings_save',
     'chef_upsert', 'chef_delete', 'chef_categories_set',
 ]);
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
     const resource = req.nextUrl.searchParams.get('resource');
     const tokenId = req.nextUrl.searchParams.get('tokenId');
     const orderId = req.nextUrl.searchParams.get('orderId');
-    const isAdmin = isAdminRequest(req);
+    const isAdmin = await isAdminRequest(req);
 
     try {
         switch (resource) {
@@ -128,7 +129,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action } = body;
-    const isAdmin = isAdminRequest(req);
+    const isAdmin = await isAdminRequest(req);
 
     if (!ADMIN_ONLY.has(action) && !PUBLIC_POST.has(action)) {
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
@@ -285,6 +286,13 @@ export async function POST(req: NextRequest) {
                 });
                 sendWhatsApp(updatedOrder.customerPhone, msg).catch(() => {});
             }
+            return NextResponse.json({ ok: true });
+        }
+
+        case 'order_delete': {
+            const { orderId } = body as { orderId: string };
+            await deleteOrderById(orderId);
+            emit('menu', 'orders');
             return NextResponse.json({ ok: true });
         }
 

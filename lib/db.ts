@@ -17,6 +17,14 @@ async function ensureIndexes(db: Db) {
         db.collection('shared_carts').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
         db.collection('payment_tokens').createIndex({ token: 1 }, { unique: true }),
         db.collection('payment_tokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+        // Printer bridge
+        db.collection('print_devices').createIndex({ id: 1 }, { unique: true }),
+        db.collection('print_jobs').createIndex({ id: 1 }, { unique: true }),
+        db.collection('print_jobs').createIndex({ status: 1, visible_after: 1, created_at: 1 }),
+        // Admin sessions
+        db.collection('admin_sessions').createIndex({ id: 1 }, { unique: true }),
+        db.collection('admin_sessions').createIndex({ shortId: 1 }, { unique: true }),
+        db.collection('admin_sessions').createIndex({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 3600 }),
     ]);
 }
 
