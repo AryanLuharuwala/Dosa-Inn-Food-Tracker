@@ -217,12 +217,17 @@ function ReceiptPreview({ template, restaurantName, tagline }: {
                 {template.footer.showQrCode && (
                     <div className={styles.previewQr}>
                         <img
-                            src={template.footer.qrUrl
-                                ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(template.footer.qrUrl)}`
-                                : `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://example.com`}
-                            alt="QR Code"
+                            src={
+                                template.footer.qrImageUrl
+                                    ? template.footer.qrImageUrl
+                                    : template.footer.qrUrl
+                                        ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(template.footer.qrUrl)}`
+                                        : '/upi-qr.jpg'
+                            }
+                            alt="UPI QR Code"
                             width={80}
                             height={80}
+                            style={{ objectFit: 'contain' }}
                         />
                         {template.footer.qrLabel && (
                             <div className={styles.previewQrLabel}>{template.footer.qrLabel}</div>
@@ -468,20 +473,20 @@ export default function BillEditorPage() {
                         </Row>
                         {template.footer.showQrCode && (
                             <>
-                                <Row label="QR Code URL">
-                                    <input
-                                        className={styles.textInput}
-                                        type="url"
-                                        placeholder="https://your-menu-link.com"
-                                        value={template.footer.qrUrl}
-                                        onChange={e => set('footer', { qrUrl: e.target.value })}
-                                    />
-                                </Row>
-                                <Row label="QR Code Label">
+                                <Row label="QR Image">
                                     <input
                                         className={styles.textInput}
                                         type="text"
-                                        placeholder="Scan to order online"
+                                        placeholder="/upi-qr.jpg"
+                                        value={template.footer.qrImageUrl}
+                                        onChange={e => set('footer', { qrImageUrl: e.target.value })}
+                                    />
+                                </Row>
+                                <Row label="QR Label">
+                                    <input
+                                        className={styles.textInput}
+                                        type="text"
+                                        placeholder="Scan to pay via UPI"
                                         value={template.footer.qrLabel}
                                         onChange={e => set('footer', { qrLabel: e.target.value })}
                                     />

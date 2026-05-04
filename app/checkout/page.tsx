@@ -26,7 +26,7 @@ function CheckoutPageInner() {
     const payMode = searchParams.get('pay'); // 'share' | 'full' | null
     const sharedCode = searchParams.get('code');
     const { items, extras, tableNumber, orderType, preorderDetails, totalAmount, sharedCartCode, clearCart } = useCart();
-    const { paymentsEnabled, addOrder } = useMenu();
+    const { paymentsEnabled, addOrder, billTemplate } = useMenu();
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState('');
     const [fullBillCart, setFullBillCart] = useState<SharedCart | null>(null);
@@ -365,16 +365,31 @@ function CheckoutPageInner() {
                                 </div>
                             </>
                         ) : (
-                            <>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M12 6v6l4 2" strokeLinecap="round" />
-                                </svg>
-                                <div>
-                                    <p className={styles.infoTitle}>Pay at the Counter</p>
-                                    <p className={styles.infoText}>Place your order now and pay when you collect — show your token number at the counter.</p>
+                            <div style={{ width: '100%' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                                        <circle cx="12" cy="12" r="10" />
+                                        <path d="M12 6v6l4 2" strokeLinecap="round" />
+                                    </svg>
+                                    <div>
+                                        <p className={styles.infoTitle}>Pay at the Counter</p>
+                                        <p className={styles.infoText}>Place your order now and pay when you collect — show your token number at the counter.</p>
+                                    </div>
                                 </div>
-                            </>
+                                {(billTemplate?.footer?.qrImageUrl || billTemplate?.footer?.showQrCode) && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Or pay now via UPI</p>
+                                        <img
+                                            src={billTemplate.footer.qrImageUrl || '/upi-qr.jpg'}
+                                            alt="UPI QR Code"
+                                            style={{ width: 160, height: 160, objectFit: 'contain', borderRadius: 8 }}
+                                        />
+                                        {billTemplate.footer.qrLabel && (
+                                            <p style={{ margin: 0, fontSize: '0.85rem', color: '#cbd5e1' }}>{billTemplate.footer.qrLabel}</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
