@@ -54,6 +54,7 @@ interface BluetoothCharacteristicProperties {
     readonly writeWithoutResponse: boolean;
     readonly read: boolean;
     readonly notify: boolean;
+    readonly indicate: boolean;
 }
 
 interface BluetoothRemoteGATTCharacteristic {

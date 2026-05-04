@@ -24,11 +24,19 @@ export const CAT_PRINT_SRV = '0000ae30-0000-1000-8000-00805f9b34fb';
 export const CAT_ADV_SRV   = '0000af30-0000-1000-8000-00805f9b34fb';
 export const CAT_PRINT_TX  = '0000ae01-0000-1000-8000-00805f9b34fb';
 export const CAT_PRINT_RX  = '0000ae02-0000-1000-8000-00805f9b34fb';
+/** Auxiliary notify/indicate characteristics. iPrint enables these BEFORE
+ *  any write — the SC03h-BA71 firmware silently drops writes if
+ *  notifications aren't subscribed first. Reverse-engineered from a
+ *  Wireshark capture of the iPrint app. */
+export const CAT_PRINT_RX2 = '0000ae04-0000-1000-8000-00805f9b34fb';
+export const CAT_PRINT_RX3 = '0000ae05-0000-1000-8000-00805f9b34fb';
 
 // ── Frame builder ────────────────────────────────────────────────────────────
 
 const enum Cmd {
+    GetDeviceInfo  = 0xa8,
     GetDeviceState = 0xa3,
+    SetDpi         = 0xa4,
     Lattice        = 0xa6,
     Retract        = 0xa0,
     Feed           = 0xa1,
@@ -36,6 +44,10 @@ const enum Cmd {
     Energy         = 0xaf,
     ApplyEnergy    = 0xbe,
     Bitmap         = 0xa2,
+    /** Pre-warmup command — payload [0x01]. Captured from iPrint, exact
+     *  semantics unknown but mandatory before printing on SC03h-style
+     *  firmware. Without it, the first bitmap row is sometimes dropped. */
+    Warmup         = 0xbb,
 }
 
 /** CRC-8 with polynomial 0x07, init 0x00 — what cat printers expect. */
@@ -72,25 +84,46 @@ const u32 = (n: number) => new Uint8Array([n & 0xff, (n >> 8) & 0xff, (n >> 16) 
 
 const PAPER_WIDTH = 384;          // pixels (58mm @ 8 dots/mm)
 const BYTES_PER_ROW = PAPER_WIDTH / 8;  // 48
-const DEFAULT_SPEED = 32;
-const DEFAULT_ENERGY = 24000;
-const FINISH_FEED_LINES = 64;
+// Values calibrated from a Wireshark capture of the iPrint app printing
+// to an SC03h-class printer. Cat-printer SDK uses different defaults
+// (speed 32, energy 24000, applyEnergy 1) which resulted in blank output
+// on this firmware. These captured values are what produces ink.
+const DEFAULT_SPEED = 30;         // 0x1E in Wireshark dump
+const DEFAULT_ENERGY = 12000;     // 0x2EE0 in Wireshark dump
+const FINISH_FEED_LINES = 48;     // dump fed 0x0030 = 48 lines twice
+
+const LATTICE_START = new Uint8Array([0xaa, 0x55, 0x17, 0x38, 0x44, 0x5f, 0x5f, 0x5f, 0x44, 0x38, 0x2c]);
+const LATTICE_END   = new Uint8Array([0xaa, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17]);
+
+/** One-shot session warmup — sent on the first print after connecting,
+ *  *after* notifications on AE02/AE04/AE05 have been subscribed. */
+export function warmupPackets(): Uint8Array[] {
+    return [
+        frame(Cmd.GetDeviceInfo,  u8(0x00)),
+        frame(Cmd.GetDeviceState, u8(0x00)),
+        frame(Cmd.Warmup,         u8(0x01)),
+    ];
+}
 
 function preamble(): Uint8Array[] {
     return [
         frame(Cmd.GetDeviceState, u8(0x00)),
-        frame(Cmd.Lattice, new Uint8Array([0xaa, 0x55, 0x17, 0x38, 0x44, 0x5f, 0x5f, 0x5f, 0x44, 0x38, 0x2c])),
-        frame(Cmd.Speed, u8(DEFAULT_SPEED)),
-        frame(Cmd.Energy, u32(DEFAULT_ENERGY)),
-        frame(Cmd.ApplyEnergy, u8(0x01)),
+        frame(Cmd.SetDpi,         u8(0x33)),
+        frame(Cmd.Lattice,        LATTICE_START),
+        frame(Cmd.Energy,         u32(DEFAULT_ENERGY)),
+        frame(Cmd.ApplyEnergy,    u8(0x00)),  // payload 0x00 per Wireshark, NOT 0x01
+        frame(Cmd.Speed,          u8(DEFAULT_SPEED)),
     ];
 }
 
 function postamble(): Uint8Array[] {
     return [
-        frame(Cmd.Feed, u16(FINISH_FEED_LINES)),
-        // End-of-print Lattice (different magic from start)
-        frame(Cmd.Lattice, new Uint8Array([0xaa, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17])),
+        frame(Cmd.Speed,          u8(0x19)),  // slow speed (25) for final feed
+        frame(Cmd.Feed,           u16(FINISH_FEED_LINES)),
+        frame(Cmd.Feed,           u16(FINISH_FEED_LINES)),
+        frame(Cmd.Speed,          u8(0x19)),
+        frame(Cmd.Lattice,        LATTICE_END),
+        frame(Cmd.GetDeviceState, u8(0x00)),
     ];
 }
 

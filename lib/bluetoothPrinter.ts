@@ -16,7 +16,8 @@
 
 import type { Order } from './localDb';
 import {
-    CAT_PRINT_SRV, CAT_PRINT_TX,
+    CAT_PRINT_SRV, CAT_PRINT_TX, CAT_PRINT_RX, CAT_PRINT_RX2, CAT_PRINT_RX3,
+    warmupPackets,
     buildTestPacketsCat, buildKOTPacketsCat, buildBillPacketsCat, buildStatsPacketsCat,
 } from './catPrinter';
 
@@ -318,6 +319,10 @@ class BluetoothPrinterClient {
      *  iPrint family (SC03h, GB02, MX02, …). Detected post-connect by
      *  probing for the cat-printer service UUID. */
     private protocol: PrinterProtocol = 'escpos';
+    /** Tracks whether the cat-printer warmup commands (GetDeviceInfo +
+     *  GetDeviceState + 0xBB) have been sent this session. Reset on
+     *  disconnect. iPrint sends these once after pairing. */
+    private warmedUp = false;
     private listeners = new Set<() => void>();
     /** Serializes every write() call. Two prints fired back-to-back used to
      *  interleave their byte streams over the BLE link, producing garbled
@@ -440,10 +445,21 @@ class BluetoothPrinterClient {
                 try {
                     const catSvc = await server.getPrimaryService(CAT_PRINT_SRV);
                     const tx = await catSvc.getCharacteristic(CAT_PRINT_TX);
+                    // Subscribe to notifications/indications BEFORE any write.
+                    // Reverse-engineering of iPrint shows the firmware silently
+                    // drops writes if these aren't subscribed first.
+                    for (const rxUuid of [CAT_PRINT_RX, CAT_PRINT_RX2, CAT_PRINT_RX3]) {
+                        try {
+                            const rx = await catSvc.getCharacteristic(rxUuid);
+                            if (rx.properties.notify || rx.properties.indicate) {
+                                await rx.startNotifications();
+                            }
+                        } catch { /* not all printers expose all three */ }
+                    }
                     writable = tx;
                     writableSvcUuid = catSvc.uuid;
                     detectedProtocol = 'catprinter';
-                    console.log('[BluetoothPrinter] Cat-printer service found, skipping enumeration');
+                    console.log('[BluetoothPrinter] Cat-printer service found, notifications enabled');
                     break; // success, exit retry loop
                 } catch {
                     // Not a cat-printer (or service not advertised) — fall
@@ -539,6 +555,7 @@ class BluetoothPrinterClient {
         this.char = null;
         this.lastDiscovery = null;
         this.protocol = 'escpos';
+        this.warmedUp = false;
         this.writeQueue = Promise.resolve();
         try { localStorage.removeItem(STORAGE_KEY); } catch {}
         this.notify();
@@ -606,30 +623,40 @@ class BluetoothPrinterClient {
 
     // ── High-level print entry points — auto-route by protocol ──────────────
 
+    /** First cat-protocol print of the session sends the warmup sequence
+     *  (GetDeviceInfo + GetDeviceState + 0xBB). Subsequent prints skip it. */
+    private async catPrint(jobPackets: Uint8Array[]): Promise<void> {
+        const all = this.warmedUp
+            ? jobPackets
+            : [...warmupPackets(), ...jobPackets];
+        await this.writeFramed(all);
+        this.warmedUp = true;
+    }
+
     async printTest(restaurantName: string): Promise<void> {
         if (this.protocol === 'catprinter') {
-            return this.writeFramed(buildTestPacketsCat(restaurantName));
+            return this.catPrint(buildTestPacketsCat(restaurantName));
         }
         return this.write(buildTestPrint(restaurantName));
     }
 
     async printKOT(order: Order, restaurantName: string): Promise<void> {
         if (this.protocol === 'catprinter') {
-            return this.writeFramed(buildKOTPacketsCat(order, restaurantName));
+            return this.catPrint(buildKOTPacketsCat(order, restaurantName));
         }
         return this.write(buildKOT(order, restaurantName));
     }
 
     async printBill(order: Order, restaurantName: string): Promise<void> {
         if (this.protocol === 'catprinter') {
-            return this.writeFramed(buildBillPacketsCat(order, restaurantName));
+            return this.catPrint(buildBillPacketsCat(order, restaurantName));
         }
         return this.write(buildBill(order, restaurantName));
     }
 
     async printStats(orders: Order[], restaurantName: string): Promise<void> {
         if (this.protocol === 'catprinter') {
-            return this.writeFramed(buildStatsPacketsCat(orders, restaurantName));
+            return this.catPrint(buildStatsPacketsCat(orders, restaurantName));
         }
         return this.write(buildDailyStats(orders, restaurantName));
     }

@@ -215,12 +215,16 @@ async def cmd_inspect(target: str):
 
 
 async def cmd_test_cat(target: str):
+    """Replays the *exact* byte sequence captured from iPrint via Wireshark
+    (lisp3r/bluetooth-thermal-printer). The init/warmup/header/footer are
+    cribbed verbatim — only the bitmap rows are our test pattern."""
     device = await resolve(target)
     print(f"Connecting to {device.address} (forcing BLE transport)...")
     try:
         async with BleakClient(device, timeout=15.0) as c:
             print("Connected.")
             tx = None
+            rx_uuids = [CAT_PRINT_RX, "0000ae04-0000-1000-8000-00805f9b34fb", "0000ae05-0000-1000-8000-00805f9b34fb"]
             for svc in c.services:
                 if svc.uuid.lower() == CAT_PRINT_SRV.lower():
                     for ch in svc.characteristics:
@@ -232,17 +236,43 @@ async def cmd_test_cat(target: str):
                 print("Run `inspect` to see what services this printer actually exposes.")
                 return
 
+            # The captured init sequence enables notifications on AE02/AE04
+            # and indications on AE05 *before* sending any commands. Without
+            # this, some firmware variants silently drop subsequent writes.
+            print("Enabling notifications on AE02/AE04/AE05...")
+            for u in rx_uuids:
+                try:
+                    await c.start_notify(u, lambda _s, d: print(f"  notify {u[:8]}: {d.hex()}"))
+                except Exception as e:
+                    print(f"  (skipped {u[:8]}: {e})")
+
             async def send(packet: bytes):
                 await c.write_gatt_char(tx, packet, response=False)
 
-            print("\nSending preamble (state probe, lattice, speed, energy, apply)...")
-            await send(frame(CMD_GET_DEVICE_STATE, b'\x00'))
-            await send(frame(CMD_LATTICE, LATTICE_START))
-            await send(frame(CMD_SPEED, b'\x20'))                                   # speed = 32
-            await send(frame(CMD_ENERGY, bytes([0xc0, 0x5d, 0x00, 0x00])))          # energy = 24000 (LE)
-            await send(frame(CMD_APPLY_ENERGY, b'\x01'))
+            async def send_hex(hex_str: str):
+                await send(bytes.fromhex(hex_str.replace(' ', '')))
 
-            print("Sending test bitmap (24 rows × 384 px)...")
+            # Warmup — copied verbatim from the Wireshark dump
+            print("\nWarmup: GetDeviceInfo + GetDeviceState...")
+            await send_hex('5178a80001000000ff 5178a30001000000ff')
+            print("Warmup: cmd 0xBB...")
+            await send_hex('5178bb0001000107ff')
+            await asyncio.sleep(0.1)
+
+            # Header (verbatim, Speed=30, Energy=12000, ApplyEnergy=0)
+            print("Header: state, dpi, lattice-start, energy, apply, speed...")
+            await send_hex(
+                '5178a30001000000ff'                           # GetDeviceState
+                '5178a40001003399ff'                           # SetDpi 0x33
+                '5178a6000b00aa551738445f5f5f44382ca1ff'      # Lattice start
+                '5178af000200e02e89ff'                         # Energy = 12000 (0x2EE0)
+                '5178be0001000000ff'                           # ApplyEnergy 0x00
+                '5178bd0001001e5aff'                           # Speed = 30 (0x1E)
+            )
+            await asyncio.sleep(0.05)
+
+            # Test bitmap (24 rows × 384 px)
+            print("Bitmap: 24 rows × 48 bytes each...")
             pattern_rows = []
             for _ in range(4): pattern_rows.append(bytes([0xff] * 48))
             for _ in range(4): pattern_rows.append(bytes([0x00] * 48))
@@ -250,17 +280,25 @@ async def cmd_test_cat(target: str):
             for _ in range(4): pattern_rows.append(bytes([0x00] * 48))
             stripes = bytes([0xff if i % 2 == 0 else 0x00 for i in range(48)])
             for _ in range(8): pattern_rows.append(stripes)
-
             for row in pattern_rows:
                 await send(frame(CMD_BITMAP, row))
-                await asyncio.sleep(0.005)
+                await asyncio.sleep(0.01)
 
-            print("Sending postamble (feed 64, lattice end)...")
-            await send(frame(CMD_FEED, b'\x40\x00'))
-            await send(frame(CMD_LATTICE, LATTICE_END))
+            # Footer (verbatim from dump)
+            print("Footer: speed, feed×2, lattice-end, state...")
+            await send_hex(
+                '5178bd000100194fff'                           # Speed = 25 (0x19)
+                '5178a10002003000f9ff'                         # Feed 48 lines
+                '5178a10002003000f9ff'                         # Feed 48 lines (again)
+                '5178bd000100194fff'                           # Speed 25
+                '5178a6000b00aa5517000000000000001711ff'      # Lattice end
+                '5178a30001000000ff'                           # Final GetDeviceState
+            )
+            await asyncio.sleep(0.5)
 
             print("\nDone. If paper printed bars + stripes, cat-printer protocol works ✓")
-            print("If blank, the printer uses different UUIDs or a different protocol.")
+            print("If blank: this printer model needs additional warmup commands.")
+            print("If garbled (vertical stripes wavy): printer is 80mm not 58mm — adjust width.")
     except Exception as e:
         explain_connect_error(e, device)
 
