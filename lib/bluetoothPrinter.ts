@@ -325,9 +325,9 @@ export function buildBillFromTemplate(
     if (tmpl.footer.customMessage) {
         out.push(CMD.alignCenter, txt(tmpl.footer.customMessage), NL_BYTES, CMD.alignLeft);
     }
-    if (tmpl.footer.showQrCode && tmpl.footer.qrUrl) {
+    if (tmpl.footer.showQrCode && tmpl.footer.upiId) {
         out.push(CMD.alignCenter);
-        out.push(buildQrCode(tmpl.footer.qrUrl));
+        out.push(buildQrCode(`upi://pay?pa=${tmpl.footer.upiId}`));
         if (tmpl.footer.qrLabel) out.push(txt(tmpl.footer.qrLabel), NL_BYTES);
         out.push(CMD.alignLeft);
     }
