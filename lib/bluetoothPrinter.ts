@@ -300,6 +300,7 @@ const KNOWN_PRINTER_SERVICES: BluetoothServiceUUID[] = [
     '0000ffe0-0000-1000-8000-00805f9b34fb', // generic
     '0000fee7-0000-1000-8000-00805f9b34fb', // iPrint / cat printer family variant
     '0000ae30-0000-1000-8000-00805f9b34fb', // iPrint primary service (incl. SC03h)
+    '0000ae3a-0000-1000-8000-00805f9b34fb', // iPrint secondary service — some SC03h firmware exposes only this (lisp3r/bluetooth-thermal-printer)
     '0000af30-0000-1000-8000-00805f9b34fb', // iPrint variant
     '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC / Microchip
     'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // common
