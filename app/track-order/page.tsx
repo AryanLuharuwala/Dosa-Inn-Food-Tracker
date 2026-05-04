@@ -63,43 +63,57 @@ export default function TrackOrderPage() {
         const sessionOrderId = lastOrderStr ? JSON.parse(lastOrderStr).orderId : null;
         const targetOrderId = urlOrderId || sessionOrderId;
 
+        let data: OrderData[] = [];
+
         try {
             const params = new URLSearchParams({ resource: 'orders', tokenId: visitorId });
             if (targetOrderId) params.set('orderId', targetOrderId);
             const res = await fetch(`/api/db?${params}`);
-            if (!res.ok) return;
+            if (res.ok) {
+                data = await res.json();
+            }
+        } catch {
+            // API unavailable — will fallback to localStorage
+        }
 
-            const data: OrderData[] = await res.json();
-
-            const deliveredMapStr = localStorage.getItem('deliveredOrdersTime');
-            const deliveredMap: Record<string, number> = deliveredMapStr ? JSON.parse(deliveredMapStr) : {};
-            let mapChanged = false;
-
-            const mapped: OrderData[] = [];
-            data.forEach(row => {
-                if (row.status === 'delivered' || row.status === 'served') {
-                    if (!deliveredMap[row.orderId]) { deliveredMap[row.orderId] = Date.now(); mapChanged = true; }
-                    if (Date.now() - deliveredMap[row.orderId] > 60000) return;
+        // Fallback: if API returned nothing, use localStorage
+        if (data.length === 0 && lastOrderStr) {
+            try {
+                const localOrder = JSON.parse(lastOrderStr) as OrderData;
+                if (localOrder.orderId) {
+                    data = [localOrder];
                 }
-                mapped.push(row);
-            });
+            } catch { /* invalid JSON */ }
+        }
 
-            if (mapChanged) localStorage.setItem('deliveredOrdersTime', JSON.stringify(deliveredMap));
+        const deliveredMapStr = localStorage.getItem('deliveredOrdersTime');
+        const deliveredMap: Record<string, number> = deliveredMapStr ? JSON.parse(deliveredMapStr) : {};
+        let mapChanged = false;
 
-            // Play sounds on status transitions
-            mapped.forEach(order => {
-                const prev = prevStatuses.current[order.orderId];
-                if (prev && prev !== order.status) {
-                    if (order.status === 'ready') playReady();
-                    if (order.status === 'delivered') playDelivered();
-                }
-                prevStatuses.current[order.orderId] = order.status;
-            });
+        const mapped: OrderData[] = [];
+        data.forEach(row => {
+            if (row.status === 'delivered' || row.status === 'served') {
+                if (!deliveredMap[row.orderId]) { deliveredMap[row.orderId] = Date.now(); mapChanged = true; }
+                if (Date.now() - deliveredMap[row.orderId] > 60000) return;
+            }
+            mapped.push(row);
+        });
 
-            const active = mapped.find(o => o.status !== 'delivered' && o.status !== 'served') || mapped[0];
-            if (active) localStorage.setItem('lastOrder', JSON.stringify(active));
-            setOrders(mapped);
-        } catch { /* silent */ }
+        if (mapChanged) localStorage.setItem('deliveredOrdersTime', JSON.stringify(deliveredMap));
+
+        // Play sounds on status transitions
+        mapped.forEach(order => {
+            const prev = prevStatuses.current[order.orderId];
+            if (prev && prev !== order.status) {
+                if (order.status === 'ready') playReady();
+                if (order.status === 'delivered') playDelivered();
+            }
+            prevStatuses.current[order.orderId] = order.status;
+        });
+
+        const active = mapped.find(o => o.status !== 'delivered' && o.status !== 'served') || mapped[0];
+        if (active) localStorage.setItem('lastOrder', JSON.stringify(active));
+        setOrders(mapped);
     }, [playReady, playDelivered]);
 
     // Initial load
@@ -286,31 +300,11 @@ export default function TrackOrderPage() {
 
                                 {/* Total + cancel */}
                                 <div className={styles.totalSection}>
-                                    <span className={styles.totalLabel}>Total Paid</span>
+                                    <span className={styles.totalLabel}>Total</span>
                                     <span className={styles.totalAmount}>₹{order.totalAmount}</span>
                                 </div>
 
-                                {canCancel && (
-                                    cancelConfirm === order.orderId ? (
-                                        <div className={styles.cancelConfirm}>
-                                            <span>Cancel this order?</span>
-                                            <div className={styles.cancelBtns}>
-                                                <button className={styles.cancelNo} onClick={() => setCancelConfirm(null)}>Keep it</button>
-                                                <button
-                                                    className={styles.cancelYes}
-                                                    disabled={cancellingId === order.orderId}
-                                                    onClick={() => handleCancel(order.orderId)}
-                                                >
-                                                    {cancellingId === order.orderId ? '...' : 'Yes, cancel'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <button className={styles.cancelOrderBtn} onClick={() => setCancelConfirm(order.orderId)}>
-                                            Cancel Order
-                                        </button>
-                                    )
-                                )}
+                                {/* Cancel Order button — disabled/hidden */}
                             </div>
                         );
                     })}

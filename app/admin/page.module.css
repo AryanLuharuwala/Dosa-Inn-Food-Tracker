@@ -21,27 +21,34 @@
     flex-shrink: 0;
 }
 
-/* Mobile: collapse the header into a single horizontally scrollable strip so
- * Pricing / Analytics / Rush / Logout don't get clipped offscreen. */
+/* Mobile: stack header into two rows and make action buttons scrollable */
 @media (max-width: 768px) {
     .header {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
+        flex-wrap: wrap;
         justify-content: flex-start;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: thin;
+        padding: var(--space-sm) var(--space-md);
+        gap: var(--space-sm);
     }
-    .header::-webkit-scrollbar {
-        height: 4px;
-    }
-    .header::-webkit-scrollbar-thumb {
-        background: rgba(0, 0, 0, 0.2);
-        border-radius: 2px;
-    }
-    .headerLeft,
-    .rushHourToggle {
+    .headerLeft {
+        width: 100%;
         flex-shrink: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .headerLeft::-webkit-scrollbar {
+        display: none;
+    }
+    .rushHourToggle {
+        width: 100%;
+        flex-shrink: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-bottom: 2px;
+    }
+    .rushHourToggle::-webkit-scrollbar {
+        display: none;
     }
 }
 
@@ -137,25 +144,26 @@
     display: flex;
     background-color: var(--color-bg-card);
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+    display: none;
 }
 
 @media (max-width: 768px) {
     .tabs {
-        overflow-x: auto;
-        overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: thin;
-    }
-    .tabs::-webkit-scrollbar {
-        height: 3px;
-    }
-    .tabs::-webkit-scrollbar-thumb {
-        background: rgba(0, 0, 0, 0.15);
+        gap: 0;
     }
 }
 
 .tab {
     flex: 1;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -168,12 +176,16 @@
     border-bottom: 2px solid transparent;
     transition: all var(--transition-fast);
     position: relative;
+    white-space: nowrap;
+    cursor: pointer;
 }
 
 @media (max-width: 768px) {
     .tab {
-        flex: 0 0 auto;
-        min-width: 80px;
+        flex: 1 0 0;
+        min-width: 72px;
+        padding: var(--space-sm) var(--space-sm);
+        font-size: 10px;
     }
 }
 

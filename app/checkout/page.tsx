@@ -32,6 +32,7 @@ function CheckoutPageInner() {
     const [fullBillCart, setFullBillCart] = useState<SharedCart | null>(null);
     const [whatsappPhone, setWhatsappPhone] = useState('');
     const orderCompleted = useRef(false);
+    const [copiedUpi, setCopiedUpi] = useState(false);
 
     // Load full shared cart when paying full bill
     useEffect(() => {
@@ -76,9 +77,9 @@ function CheckoutPageInner() {
             const tokenNumberValue =
                 orderType === 'dine-in' && tableNumber
                     ? parseInt(tableNumber, 10)
-                    : await getUniqueToken();
+                    : Math.floor(100 + Math.random() * 900);
             const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
-            const orderId = `#${tokenNumberValue}-RDA-${randomSuffix}`;
+            const orderId = `#${tokenNumberValue}-PKA-${randomSuffix}`;
 
             const orderData = {
                 orderId,
@@ -109,18 +110,23 @@ function CheckoutPageInner() {
                     : {}),
             };
 
-            const res = await fetch('/api/db', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'order_add', order: orderData }),
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error((err as { error?: string }).error || 'Failed to place order');
+            // Try API call, but don't block on failure
+            let finalId = orderId;
+            try {
+                const res = await fetch('/api/db', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'order_add', order: orderData }),
+                });
+                if (res.ok) {
+                    const result = await res.json().catch(() => ({} as { orderId?: string }));
+                    finalId = (result as { orderId?: string }).orderId || orderId;
+                }
+            } catch {
+                // API unavailable — proceed with local-only order
+                console.warn('[checkout] API unavailable, placing order locally');
             }
 
-            const result = await res.json().catch(() => ({} as { orderId?: string }));
-            const finalId = (result as { orderId?: string }).orderId || orderId;
             const placedOrder = { ...orderData, orderId: finalId };
 
             // Update local state so kitchen/admin pages see the new order immediately
@@ -310,10 +316,10 @@ function CheckoutPageInner() {
                         </div>
                     )}
 
-                    {/* PhonePe Payment */}
+                    {/* Pay at Counter */}
                     <div className={styles.section}>
-                        <h2 className={styles.sectionTitle}>Pay Securely</h2>
-                        <p className={styles.sectionSubtitle}>You'll be redirected to PhonePe to complete payment via UPI, cards, or net banking.</p>
+                        <h2 className={styles.sectionTitle}>Pay at Counter</h2>
+                        <p className={styles.sectionSubtitle}>Place your order and pay at the counter, or scan the QR code below to pay via UPI.</p>
 
                         {error && (
                             <div className={styles.errorBox}>
@@ -325,57 +331,93 @@ function CheckoutPageInner() {
                             </div>
                         )}
 
-                        {paymentsEnabled ? (
-                            <button
-                                className={styles.phonePeBtn}
-                                onClick={handlePhonePePayment}
-                                disabled={isProcessing}
-                            >
-                                <span className={styles.phonePeLogo}>Pe</span>
-                                <span>Pay ₹{billAmount} with PhonePe</span>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                        <button
+                            className={styles.phonePeBtn}
+                            onClick={handleCounterOrder}
+                            disabled={isProcessing}
+                        >
+                            <span>Place Order · ₹{billAmount}</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* UPI QR Code */}
+                    <div className={styles.section} style={{ textAlign: 'center' }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            padding: '8px 0 12px',
+                        }}>
+                            <img
+                                src="/payment-qr.jpg"
+                                alt="UPI QR Code"
+                                style={{
+                                    width: '220px',
+                                    height: 'auto',
+                                    borderRadius: '12px',
+                                }}
+                            />
+                        </div>
+                        <div
+                            onClick={() => {
+                                navigator.clipboard.writeText('gpay-11260917554@okbizaxis');
+                                setCopiedUpi(true);
+                                setTimeout(() => setCopiedUpi(false), 2000);
+                            }}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                background: copiedUpi ? '#e8f5e9' : '#f5f5f5',
+                                border: copiedUpi ? '1px solid #4caf50' : '1px solid #e0e0e0',
+                                borderRadius: '8px',
+                                padding: '8px 16px',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                marginTop: '4px',
+                            }}
+                        >
+                            <span style={{
+                                fontSize: '0.85rem',
+                                fontWeight: 600,
+                                color: '#333',
+                                fontFamily: 'monospace',
+                            }}>
+                                gpay-11260917554@okbizaxis
+                            </span>
+                            {copiedUpi ? (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4caf50" strokeWidth="2.5">
+                                    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
-                            </button>
-                        ) : (
-                            <button
-                                className={styles.phonePeBtn}
-                                onClick={handleCounterOrder}
-                                disabled={isProcessing}
-                            >
-                                <span>Place Order · ₹{billAmount}</span>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                            ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" />
+                                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
                                 </svg>
-                            </button>
-                        )}
+                            )}
+                        </div>
+                        <p style={{
+                            fontSize: '0.75rem',
+                            color: copiedUpi ? '#4caf50' : '#999',
+                            marginTop: '6px',
+                            transition: 'color 0.2s ease',
+                        }}>
+                            {copiedUpi ? 'Copied to clipboard!' : 'Tap to copy UPI ID'}
+                        </p>
                     </div>
 
                     {/* Payment info */}
                     <div className={styles.infoBox}>
-                        {paymentsEnabled ? (
-                            <>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                                    <path d="M7 11V7a5 5 0 0110 0v4" />
-                                </svg>
-                                <div>
-                                    <p className={styles.infoTitle}>Secure Payment</p>
-                                    <p className={styles.infoText}>Powered by PhonePe — supports UPI, credit/debit cards, and net banking. 256-bit encrypted.</p>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M12 6v6l4 2" strokeLinecap="round" />
-                                </svg>
-                                <div>
-                                    <p className={styles.infoTitle}>Pay at the Counter</p>
-                                    <p className={styles.infoText}>Place your order now and pay when you collect — show your token number at the counter.</p>
-                                </div>
-                            </>
-                        )}
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M12 6v6l4 2" strokeLinecap="round" />
+                        </svg>
+                        <div>
+                            <p className={styles.infoTitle}>Pay at the Counter</p>
+                            <p className={styles.infoText}>Place your order now and pay when you collect — show your token number at the counter, or scan the QR to pay via UPI.</p>
+                        </div>
                     </div>
                 </div>
             </div>

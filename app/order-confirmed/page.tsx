@@ -182,7 +182,7 @@ export default function OrderConfirmedPage() {
                     <div className={styles.divider} />
 
                     <div className={styles.totalRow}>
-                        <span>Total Paid</span>
+                        <span>Total</span>
                         <span className={styles.totalAmount}>₹{order.totalAmount}</span>
                     </div>
 
@@ -190,7 +190,7 @@ export default function OrderConfirmedPage() {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-                        Paid
+                        Pay at Counter
                     </div>
                 </div>
 
