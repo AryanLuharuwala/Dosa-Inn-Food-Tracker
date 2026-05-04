@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import type { DocLine } from './types';
 import { PAPER_WIDTH, BYTES_PER_ROW } from './types';
 
@@ -9,8 +11,24 @@ function font(bold: boolean | undefined, s: TextSize) {
     return `${bold ? 'bold ' : ''}${sizePx(s)}px sans-serif`;
 }
 
+// Resolve a src string to a Buffer for loadImage.
+// Accepts /public-relative paths (e.g. /upi-qr.jpg) and https:// URLs.
+async function resolveImageSrc(src: string): Promise<Buffer | string | null> {
+    try {
+        if (src.startsWith('/')) {
+            const filePath = path.join(process.cwd(), 'public', src);
+            if (fs.existsSync(filePath)) return fs.readFileSync(filePath);
+            return null;
+        }
+        if (src.startsWith('http://') || src.startsWith('https://')) return src;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 /** Measure total canvas height needed for a doc (two-pass approach). */
-function measureHeight(doc: DocLine[], mctx: CanvasRenderingContext2D): number {
+async function measureHeight(doc: DocLine[], mctx: CanvasRenderingContext2D): Promise<number> {
     let h = 12;
     for (const line of doc) {
         if (line.kind === 'text') {
@@ -28,6 +46,8 @@ function measureHeight(doc: DocLine[], mctx: CanvasRenderingContext2D): number {
             h += lineH(line.size) * (wraps + 1);
         } else if (line.kind === 'divider') {
             h += 6;
+        } else if (line.kind === 'image') {
+            h += (line.size ?? 180) + 8;
         } else {
             h += (line as { px?: number }).px ?? 8;
         }
@@ -59,13 +79,12 @@ function imageDataToMSBFirst(
 /** Render a receipt doc to a 1-bit MSB-first raster using node-canvas.
  *  Server-only — never call from browser code. */
 export async function renderDocServer(doc: DocLine[]): Promise<{ data: Buffer; width: number; height: number }> {
-    // Dynamic import keeps node-canvas out of client bundles.
-    const { createCanvas } = await import('canvas');
+    const { createCanvas, loadImage } = await import('canvas');
 
     // First pass: measure
     const measure = createCanvas(PAPER_WIDTH, 1);
     const mctx = measure.getContext('2d') as unknown as CanvasRenderingContext2D;
-    const height = measureHeight(doc, mctx);
+    const height = await measureHeight(doc, mctx);
 
     // Second pass: render
     const canvas = createCanvas(PAPER_WIDTH, height);
@@ -97,6 +116,19 @@ export async function renderDocServer(doc: DocLine[]): Promise<{ data: Buffer; w
         } else if (line.kind === 'divider') {
             ctx.fillRect(4, y + 2, PAPER_WIDTH - 8, 2);
             y += 6;
+        } else if (line.kind === 'image') {
+            const imgSize = line.size ?? 180;
+            const src = await resolveImageSrc(line.src);
+            if (src) {
+                try {
+                    const img = await loadImage(src as Parameters<typeof loadImage>[0]);
+                    const x = Math.round((PAPER_WIDTH - imgSize) / 2);
+                    ctx.drawImage(img, x, y, imgSize, imgSize);
+                } catch {
+                    // image load failed — leave blank space
+                }
+            }
+            y += imgSize + 8;
         } else {
             y += (line as { px?: number }).px ?? 8;
         }

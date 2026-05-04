@@ -1,5 +1,7 @@
 import type { DocLine } from './types';
 import type { Order } from '@/lib/localDb';
+import type { BillTemplate } from '@/lib/billTemplate';
+import { DEFAULT_BILL_TEMPLATE } from '@/lib/billTemplate';
 
 function padCols(left: string, right: string, totalWidth = 32): string {
     const space = Math.max(1, totalWidth - left.length - right.length);
@@ -58,7 +60,8 @@ export function buildKOTDoc(order: Order, restaurantName: string): DocLine[] {
     return doc;
 }
 
-export function buildBillDoc(order: Order, restaurantName: string): DocLine[] {
+export function buildBillDoc(order: Order, restaurantName: string, template?: BillTemplate): DocLine[] {
+    const tmpl = template ?? DEFAULT_BILL_TEMPLATE;
     const time = new Date(order.timestamp).toLocaleString('en-IN', {
         day: '2-digit', month: 'short', year: 'numeric',
         hour: '2-digit', minute: '2-digit', hour12: true,
@@ -101,6 +104,16 @@ export function buildBillDoc(order: Order, restaurantName: string): DocLine[] {
     }
     doc.push({ kind: 'space' });
     doc.push({ kind: 'text', text: 'Thank you!', align: 'center' });
+
+    if (tmpl.footer.showQrCode) {
+        const qrSrc = tmpl.footer.qrImageUrl || '/upi-qr.jpg';
+        doc.push({ kind: 'space', px: 12 });
+        doc.push({ kind: 'image', src: qrSrc, size: 180 });
+        if (tmpl.footer.qrLabel) {
+            doc.push({ kind: 'text', text: tmpl.footer.qrLabel, align: 'center' });
+        }
+    }
+
     return doc;
 }
 

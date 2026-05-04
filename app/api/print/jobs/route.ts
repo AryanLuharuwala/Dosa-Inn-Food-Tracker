@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     }
 
     const restaurantName: string = settings.restaurantName ?? 'Restaurant';
-    const doc = buildBillDoc(order, restaurantName);
+    const doc = buildBillDoc(order, restaurantName, settings.billTemplate);
     const { data, width, height } = await renderDocServer(doc);
 
     const jobId = await enqueuePrintJob(data, width, height);
