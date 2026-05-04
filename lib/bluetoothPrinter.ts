@@ -622,7 +622,6 @@ class BluetoothPrinterClient {
             if (!this.warmedUp) {
                 const wu = warmupBundles();
                 await this.doWrite(wu.a);
-                await new Promise(r => setTimeout(r, 30));
                 await this.doWrite(wu.b);
                 await new Promise(r => setTimeout(r, 100));
                 this.warmedUp = true;
