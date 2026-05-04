@@ -610,11 +610,18 @@ class BluetoothPrinterClient {
 
     /** Send a list of pre-framed packets (cat-printer protocol). The whole
      *  list runs as a single queued unit so two concurrent print jobs can't
-     *  interleave their bitmap rows. */
-    writeFramed(packets: Uint8Array[]): Promise<void> {
+     *  interleave their bitmap rows. The optional `interPacketMs` adds a
+     *  small delay between consecutive packets — cat-printers will silently
+     *  drop bitmap rows if the local BLE controller fires them back-to-back
+     *  faster than the printer's RX buffer drains. The Python reference
+     *  uses 10ms between rows; 8ms is the same with a tiny safety margin. */
+    writeFramed(packets: Uint8Array[], interPacketMs = 8): Promise<void> {
         const next = this.writeQueue.then(async () => {
-            for (const pkt of packets) {
-                await this.doWrite(pkt);
+            for (let i = 0; i < packets.length; i++) {
+                await this.doWrite(packets[i]);
+                if (interPacketMs > 0 && i < packets.length - 1) {
+                    await new Promise(r => setTimeout(r, interPacketMs));
+                }
             }
         });
         this.writeQueue = next.catch(() => {});
@@ -624,13 +631,18 @@ class BluetoothPrinterClient {
     // ── High-level print entry points — auto-route by protocol ──────────────
 
     /** First cat-protocol print of the session sends the warmup sequence
-     *  (GetDeviceInfo + GetDeviceState + 0xBB). Subsequent prints skip it. */
+     *  (GetDeviceInfo + GetDeviceState + 0xBB). Subsequent prints skip it.
+     *  Uses paced writes — cat-printer firmware drops packets if BLE writes
+     *  arrive faster than its buffer can drain. */
     private async catPrint(jobPackets: Uint8Array[]): Promise<void> {
-        const all = this.warmedUp
-            ? jobPackets
-            : [...warmupPackets(), ...jobPackets];
-        await this.writeFramed(all);
-        this.warmedUp = true;
+        if (!this.warmedUp) {
+            // Warmup gets a longer pause before the actual job — gives the
+            // printer time to ack via notifications before we start printing.
+            await this.writeFramed(warmupPackets(), 30);
+            await new Promise(r => setTimeout(r, 100));
+            this.warmedUp = true;
+        }
+        await this.writeFramed(jobPackets, 8);
     }
 
     async printTest(restaurantName: string): Promise<void> {
