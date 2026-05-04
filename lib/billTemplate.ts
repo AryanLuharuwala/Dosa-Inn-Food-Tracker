@@ -27,8 +27,7 @@ export interface BillTemplate {
   footer: {
     customMessage: string;
     showQrCode: boolean;
-    qrImageUrl: string;  // direct image URL shown as-is (e.g. /upi-qr.jpg)
-    qrUrl: string;       // fallback: encode this URL into a generated QR
+    upiId: string;       // UPI ID — a clean QR is generated from this at print/display time
     qrLabel: string;
     footerNote: string;
   };
@@ -67,8 +66,7 @@ export const DEFAULT_BILL_TEMPLATE: BillTemplate = {
   footer: {
     customMessage: 'Thank you! Visit again!',
     showQrCode: true,
-    qrImageUrl: '/upi-qr.jpg',
-    qrUrl: '',
+    upiId: 'gpay-11260917554@okbizaxis',
     qrLabel: 'Scan to pay via UPI',
     footerNote: '',
   },

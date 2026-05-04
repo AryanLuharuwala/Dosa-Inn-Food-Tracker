@@ -46,7 +46,7 @@ async function measureHeight(doc: DocLine[], mctx: CanvasRenderingContext2D): Pr
             h += lineH(line.size) * (wraps + 1);
         } else if (line.kind === 'divider') {
             h += 6;
-        } else if (line.kind === 'image') {
+        } else if (line.kind === 'image' || line.kind === 'qr') {
             h += (line.size ?? 180) + 8;
         } else {
             h += (line as { px?: number }).px ?? 8;
@@ -116,6 +116,22 @@ export async function renderDocServer(doc: DocLine[]): Promise<{ data: Buffer; w
         } else if (line.kind === 'divider') {
             ctx.fillRect(4, y + 2, PAPER_WIDTH - 8, 2);
             y += 6;
+        } else if (line.kind === 'qr') {
+            const imgSize = line.size ?? 180;
+            try {
+                const QRCode = await import('qrcode');
+                const buf = await QRCode.toBuffer(line.data, {
+                    width: imgSize,
+                    margin: 1,
+                    color: { dark: '#000000', light: '#ffffff' },
+                });
+                const img = await loadImage(buf);
+                const x = Math.round((PAPER_WIDTH - imgSize) / 2);
+                ctx.drawImage(img as unknown as CanvasImageSource, x, y, imgSize, imgSize);
+            } catch {
+                // QR generation failed — leave blank space
+            }
+            y += imgSize + 8;
         } else if (line.kind === 'image') {
             const imgSize = line.size ?? 180;
             const src = await resolveImageSrc(line.src);

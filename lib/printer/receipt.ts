@@ -105,10 +105,9 @@ export function buildBillDoc(order: Order, restaurantName: string, template?: Bi
     doc.push({ kind: 'space' });
     doc.push({ kind: 'text', text: 'Thank you!', align: 'center' });
 
-    if (tmpl.footer.showQrCode) {
-        const qrSrc = tmpl.footer.qrImageUrl || '/upi-qr.jpg';
+    if (tmpl.footer.showQrCode && tmpl.footer.upiId) {
         doc.push({ kind: 'space', px: 12 });
-        doc.push({ kind: 'image', src: qrSrc, size: 180 });
+        doc.push({ kind: 'qr', data: `upi://pay?pa=${tmpl.footer.upiId}`, size: 180 });
         if (tmpl.footer.qrLabel) {
             doc.push({ kind: 'text', text: tmpl.footer.qrLabel, align: 'center' });
         }

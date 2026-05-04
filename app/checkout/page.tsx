@@ -376,13 +376,13 @@ function CheckoutPageInner() {
                                         <p className={styles.infoText}>Place your order now and pay when you collect — show your token number at the counter.</p>
                                     </div>
                                 </div>
-                                {(billTemplate?.footer?.qrImageUrl || billTemplate?.footer?.showQrCode) && (
+                                {billTemplate?.footer?.showQrCode && billTemplate.footer.upiId && (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)' }}>
                                         <p style={{ margin: 0, fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Or pay now via UPI</p>
                                         <img
-                                            src={billTemplate.footer.qrImageUrl || '/upi-qr.jpg'}
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`upi://pay?pa=${billTemplate.footer.upiId}`)}`}
                                             alt="UPI QR Code"
-                                            style={{ width: 160, height: 160, objectFit: 'contain', borderRadius: 8 }}
+                                            style={{ width: 160, height: 160, objectFit: 'contain', borderRadius: 8, background: '#fff', padding: 4 }}
                                         />
                                         {billTemplate.footer.qrLabel && (
                                             <p style={{ margin: 0, fontSize: '0.85rem', color: '#cbd5e1' }}>{billTemplate.footer.qrLabel}</p>

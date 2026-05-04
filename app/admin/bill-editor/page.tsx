@@ -214,16 +214,10 @@ function ReceiptPreview({ template, restaurantName, tagline }: {
                 {template.footer.customMessage && (
                     <div className={styles.previewThankYou}>{template.footer.customMessage}</div>
                 )}
-                {template.footer.showQrCode && (
+                {template.footer.showQrCode && template.footer.upiId && (
                     <div className={styles.previewQr}>
                         <img
-                            src={
-                                template.footer.qrImageUrl
-                                    ? template.footer.qrImageUrl
-                                    : template.footer.qrUrl
-                                        ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(template.footer.qrUrl)}`
-                                        : '/upi-qr.jpg'
-                            }
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`upi://pay?pa=${template.footer.upiId}`)}`}
                             alt="UPI QR Code"
                             width={80}
                             height={80}
@@ -473,13 +467,13 @@ export default function BillEditorPage() {
                         </Row>
                         {template.footer.showQrCode && (
                             <>
-                                <Row label="QR Image">
+                                <Row label="UPI ID">
                                     <input
                                         className={styles.textInput}
                                         type="text"
-                                        placeholder="/upi-qr.jpg"
-                                        value={template.footer.qrImageUrl}
-                                        onChange={e => set('footer', { qrImageUrl: e.target.value })}
+                                        placeholder="yourname@okbizaxis"
+                                        value={template.footer.upiId}
+                                        onChange={e => set('footer', { upiId: e.target.value })}
                                     />
                                 </Row>
                                 <Row label="QR Label">
