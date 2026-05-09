@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useMenu } from '@/lib/menuContext';
 import styles from './page.module.css';
 import Link from 'next/link';
@@ -11,7 +10,6 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [password, setPassword] = useState('');
-    const router = useRouter();
     const { restaurantName } = useMenu();
 
     // Password login
@@ -27,8 +25,7 @@ export default function LoginPage() {
         });
         setLoading(false);
         if (res.ok) {
-            router.push('/admin');
-            router.refresh();
+            window.location.href = '/admin';
         } else {
             setError('Invalid password');
         }
