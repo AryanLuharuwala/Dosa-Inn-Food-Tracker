@@ -62,7 +62,9 @@ export default function EspConfigurator() {
             const write   = await svc.getCharacteristic(CFG_WRITE);
             const apply   = await svc.getCharacteristic(CFG_APPLY);
             await status.startNotifications();
-            status.addEventListener('characteristicvaluechanged', (e) => {
+            // BluetoothRemoteGATTCharacteristic extends EventTarget at runtime,
+            // but TS lib doesn't declare it. Cast to access addEventListener.
+            (status as unknown as EventTarget).addEventListener('characteristicvaluechanged', (e: Event) => {
                 const v = (e.target as BluetoothRemoteGATTCharacteristic).value;
                 if (!v) return;
                 try { setStatus(JSON.parse(new TextDecoder().decode(v))); } catch {}
