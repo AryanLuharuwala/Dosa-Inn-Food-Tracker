@@ -9,22 +9,62 @@
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <NimBLEServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <esp_eap_client.h>
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>
+#include <Preferences.h>
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-static const char* WIFI_SSID     = "GUEST_SECURED";
-static const char* WIFI_IDENTITY = "21MI31032";
-static const char* WIFI_USERNAME = "21MI31032";
-static const char* WIFI_PASSWORD = "$tandard4B";
+// Compiled-in defaults. At boot, ESP loads values from NVS and falls back to
+// these if the NVS slot is empty. After BLE-config writes new values, they
+// persist to NVS and survive reboots.
 
-static const char* SERVER_BASE  = "http://pollys.food";   // http:// or https://
-static const char* DEVICE_ID    = "printer";
-static const char* DEVICE_TOKEN = "8spDDEJSe1bMU9OrTkkBLY6IgQlLgbXWL7AOpnXZE3A";
+static const char* DEF_WIFI_SSID     = "GUEST_SECURED";
+static const char* DEF_WIFI_IDENTITY = "21MI31032";       // empty for plain WPA2
+static const char* DEF_WIFI_USERNAME = "21MI31032";
+static const char* DEF_WIFI_PASSWORD = "$tandard4B";
+
+static const char* DEF_SERVER_BASE  = "http://pollys.food";
+static const char* DEF_DEVICE_ID    = "printer";
+static const char* DEF_DEVICE_TOKEN = "8spDDEJSe1bMU9OrTkkBLY6IgQlLgbXWL7AOpnXZE3A";
+
+// Live, in-RAM config (loaded from NVS at boot). All read paths use these.
+static String gWifiSsid, gWifiIdentity, gWifiUsername, gWifiPassword;
+static String gServerBase, gDeviceId, gDeviceToken;
+
+// Server-pushed runtime settings (refreshed on every long-poll response).
+static uint8_t  gSpeed  = 34;
+static uint16_t gEnergy = 13500;
+
+static Preferences gPrefs;
+#define NVS_NS "pcfg"
+
+static void loadConfig() {
+    gPrefs.begin(NVS_NS, true /*readonly*/);
+    gWifiSsid     = gPrefs.getString("wifi_ssid",     DEF_WIFI_SSID);
+    gWifiIdentity = gPrefs.getString("wifi_identity", DEF_WIFI_IDENTITY);
+    gWifiUsername = gPrefs.getString("wifi_username", DEF_WIFI_USERNAME);
+    gWifiPassword = gPrefs.getString("wifi_password", DEF_WIFI_PASSWORD);
+    gServerBase   = gPrefs.getString("server_base",   DEF_SERVER_BASE);
+    gDeviceId     = gPrefs.getString("device_id",     DEF_DEVICE_ID);
+    gDeviceToken  = gPrefs.getString("device_token",  DEF_DEVICE_TOKEN);
+    gPrefs.end();
+    Serial.printf("cfg: ssid=%s server=%s id=%s tokenLen=%u\n",
+        gWifiSsid.c_str(), gServerBase.c_str(), gDeviceId.c_str(),
+        (unsigned)gDeviceToken.length());
+}
+
+/** Save a single key (BLE config writes one field at a time). */
+static void saveConfigField(const char* key, const String& val) {
+    gPrefs.begin(NVS_NS, false /*rw*/);
+    gPrefs.putString(key, val);
+    gPrefs.end();
+    Serial.printf("cfg: saved %s (len=%u)\n", key, (unsigned)val.length());
+}
 
 // Let's Encrypt ISRG Root X1 (valid until 2035-06-04).
 static const char* TLS_CA_CERT = R"(
@@ -129,8 +169,9 @@ static bool catWarmup() {
 }
 
 static bool catPreamble() {
-    uint8_t z = 0x00, dpi = 0x33, spd = 34;
-    uint8_t energy[2] = {0xBC, 0x34};   // 13500 LE
+    uint8_t z = 0x00, dpi = 0x33;
+    uint8_t spd = gSpeed;
+    uint8_t energy[2] = { (uint8_t)(gEnergy & 0xFF), (uint8_t)(gEnergy >> 8) };
     sendCmd(0xa3, &z, 1);
     sendCmd(0xa4, &dpi, 1);
     sendCmd(0xa6, LATTICE_START, 11);
@@ -253,16 +294,22 @@ static bool connectPrinter() {
     return true;
 }
 
-// ─── WIFI (WPA2-Enterprise) ──────────────────────────────────────────────────
+// ─── WIFI (WPA2-Enterprise or plain WPA2) ────────────────────────────────────
 static void connectWifi() {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_STA);
-    esp_eap_client_set_identity((uint8_t*)WIFI_IDENTITY, strlen(WIFI_IDENTITY));
-    esp_eap_client_set_username((uint8_t*)WIFI_USERNAME, strlen(WIFI_USERNAME));
-    esp_eap_client_set_password((uint8_t*)WIFI_PASSWORD, strlen(WIFI_PASSWORD));
-    esp_wifi_sta_enterprise_enable();
-    WiFi.begin(WIFI_SSID);
-    Serial.printf("WiFi: joining %s ", WIFI_SSID);
+    if (gWifiIdentity.length() > 0) {
+        // WPA2-Enterprise
+        esp_eap_client_set_identity((uint8_t*)gWifiIdentity.c_str(), gWifiIdentity.length());
+        esp_eap_client_set_username((uint8_t*)gWifiUsername.c_str(), gWifiUsername.length());
+        esp_eap_client_set_password((uint8_t*)gWifiPassword.c_str(), gWifiPassword.length());
+        esp_wifi_sta_enterprise_enable();
+        WiFi.begin(gWifiSsid.c_str());
+    } else {
+        // Plain WPA2 — psk in gWifiPassword
+        WiFi.begin(gWifiSsid.c_str(), gWifiPassword.c_str());
+    }
+    Serial.printf("WiFi: joining %s ", gWifiSsid.c_str());
     uint32_t t0 = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) {
         delay(500); Serial.print('.');
@@ -276,21 +323,19 @@ static void connectWifi() {
 }
 
 // ─── HTTP / HTTPS ────────────────────────────────────────────────────────────
-// Uses the URL prefix to decide between plain WiFiClient and WiFiClientSecure.
-
 static bool isHttps() {
-    return strncmp(SERVER_BASE, "https://", 8) == 0;
+    return gServerBase.startsWith("https://");
 }
 
 static int httpGet(const String& path, String& out, uint32_t timeoutMs = 15000) {
-    String url = String(SERVER_BASE) + path;
+    String url = gServerBase + path;
     HTTPClient http;
     bool began;
     if (isHttps()) {
         WiFiClientSecure tls; tls.setCACert(TLS_CA_CERT);
         began = http.begin(tls, url);
         if (!began) { Serial.printf("HTTP begin failed: %s\n", url.c_str()); return -100; }
-        http.addHeader("Authorization", String("Bearer ") + DEVICE_TOKEN);
+        http.addHeader("Authorization", String("Bearer ") + gDeviceToken);
         http.setTimeout(timeoutMs);
         int code = http.GET();
         if (code > 0) out = http.getString();
@@ -300,7 +345,7 @@ static int httpGet(const String& path, String& out, uint32_t timeoutMs = 15000) 
     } else {
         began = http.begin(url);
         if (!began) { Serial.printf("HTTP begin failed: %s\n", url.c_str()); return -100; }
-        http.addHeader("Authorization", String("Bearer ") + DEVICE_TOKEN);
+        http.addHeader("Authorization", String("Bearer ") + gDeviceToken);
         http.setTimeout(timeoutMs);
         int code = http.GET();
         if (code > 0) out = http.getString();
@@ -311,12 +356,12 @@ static int httpGet(const String& path, String& out, uint32_t timeoutMs = 15000) 
 }
 
 static int httpPostJson(const String& path, const String& body) {
-    String url = String(SERVER_BASE) + path;
+    String url = gServerBase + path;
     HTTPClient http;
     if (isHttps()) {
         WiFiClientSecure tls; tls.setCACert(TLS_CA_CERT);
         if (!http.begin(tls, url)) return -100;
-        http.addHeader("Authorization", String("Bearer ") + DEVICE_TOKEN);
+        http.addHeader("Authorization", String("Bearer ") + gDeviceToken);
         http.addHeader("Content-Type", "application/json");
         http.setTimeout(15000);
         int code = http.POST(body);
@@ -324,7 +369,7 @@ static int httpPostJson(const String& path, const String& body) {
         return code;
     } else {
         if (!http.begin(url)) return -100;
-        http.addHeader("Authorization", String("Bearer ") + DEVICE_TOKEN);
+        http.addHeader("Authorization", String("Bearer ") + gDeviceToken);
         http.addHeader("Content-Type", "application/json");
         http.setTimeout(15000);
         int code = http.POST(body);
@@ -334,9 +379,9 @@ static int httpPostJson(const String& path, const String& body) {
 }
 
 // ─── JOB LOOP ────────────────────────────────────────────────────────────────
-// Long-poll the server: each request waits up to LONG_POLL_SEC for a job and
-// returns 200 (job) or 204 (no job). HTTP timeout is set comfortably above
-// the server's wait window so a clean 204 isn't mistaken for a timeout.
+// Long-poll the server. The endpoint always returns 200 with this shape:
+//   { settings: { role, speed, energy }, job: null | { id, width, height, bitmap_b64 } }
+// `settings` is refreshed every cycle so admin tweaks apply on the next print.
 static const uint32_t LONG_POLL_SEC     = 25;
 static const uint32_t LONG_POLL_HTTP_MS = (LONG_POLL_SEC + 10) * 1000;
 static uint32_t       gPollTick         = 0;
@@ -344,22 +389,36 @@ static bool processJob() {
     String body;
     uint32_t t0 = millis();
     int code = httpGet(
-        String("/api/print/jobs/next?device=") + DEVICE_ID +
+        String("/api/print/jobs/next?device=") + gDeviceId +
         "&wait=" + String(LONG_POLL_SEC),
         body, LONG_POLL_HTTP_MS);
     uint32_t dt = millis() - t0;
-    if (code == 204) {
-        if ((gPollTick++ % 4) == 0) Serial.printf("poll: 204 (no job) %lums\n", (unsigned long)dt);
-        return false;
-    }
     if (code != 200) { Serial.printf("HTTP poll: %d (%lums)\n", code, (unsigned long)dt); return false; }
 
     DynamicJsonDocument doc(96 * 1024);
     if (deserializeJson(doc, body)) { Serial.println("JSON parse error"); return false; }
 
-    const char* id     = doc["id"]         | "";
-    uint16_t    height = doc["height"]     | 0;
-    const char* bmpB64 = doc["bitmap_b64"] | "";
+    // Apply settings on every cycle — cheap, idempotent.
+    if (doc["settings"].is<JsonObject>()) {
+        uint8_t  newSpeed  = doc["settings"]["speed"]  | gSpeed;
+        uint16_t newEnergy = doc["settings"]["energy"] | gEnergy;
+        if (newSpeed != gSpeed || newEnergy != gEnergy) {
+            Serial.printf("settings: speed %u→%u energy %u→%u\n",
+                          gSpeed, newSpeed, gEnergy, newEnergy);
+            gSpeed  = newSpeed;
+            gEnergy = newEnergy;
+        }
+    }
+
+    if (doc["job"].isNull() || !doc["job"].is<JsonObject>()) {
+        if ((gPollTick++ % 4) == 0) Serial.printf("poll: no job (%lums)\n", (unsigned long)dt);
+        return false;
+    }
+
+    JsonObject job = doc["job"];
+    const char* id     = job["id"]         | "";
+    uint16_t    height = job["height"]     | 0;
+    const char* bmpB64 = job["bitmap_b64"] | "";
     if (!*id || !*bmpB64 || height == 0) { Serial.println("Job: missing fields"); return false; }
 
     size_t expect = BYTES_PER_ROW * (size_t)height;
@@ -389,16 +448,126 @@ static bool processJob() {
     return ok;
 }
 
+// ─── BLE CONFIG SERVICE (we are BOTH a BLE central for the printer and a
+//      BLE peripheral that admins can connect to via Web Bluetooth) ──────────
+//
+// Service:    daa10001-1234-1234-1234-123456789abc  ("Dinn Admin Agent")
+// Status R:   daa10002-...   JSON: {label, ip, rssi, wifiOk, fw, hasToken}
+// Config W:   daa10003-...   write JSON: {field, value}
+//                            field ∈ {wifi_ssid, wifi_identity, wifi_username,
+//                                     wifi_password, server_base, device_id,
+//                                     device_token}
+//                            value: string
+// Apply W:    daa10004-...   write "reboot" to commit & restart, or
+//                            "wifi" to just retry wifi without reboot.
+//
+// Web Bluetooth admin flow: requestDevice({filters:[{services:[daa10001-...]}]})
+// → write each field → write "reboot" to apply.
+
+static const char* CFG_SVC = "daa10001-1234-1234-1234-123456789abc";
+static const char* CFG_STATUS = "daa10002-1234-1234-1234-123456789abc";
+static const char* CFG_WRITE  = "daa10003-1234-1234-1234-123456789abc";
+static const char* CFG_APPLY  = "daa10004-1234-1234-1234-123456789abc";
+
+static NimBLECharacteristic* gCfgStatus = nullptr;
+
+static String buildStatusJson() {
+    DynamicJsonDocument d(256);
+    d["label"]    = gDeviceId;
+    d["ip"]       = WiFi.localIP().toString();
+    d["rssi"]     = (int)WiFi.RSSI();
+    d["wifiOk"]   = WiFi.status() == WL_CONNECTED;
+    d["fw"]       = __DATE__ " " __TIME__;
+    d["hasToken"] = gDeviceToken.length() > 0;
+    String out; serializeJson(d, out); return out;
+}
+
+static void publishStatus() {
+    if (!gCfgStatus) return;
+    String s = buildStatusJson();
+    gCfgStatus->setValue(s);
+    gCfgStatus->notify();
+}
+
+class CfgWriteCB : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+        std::string raw = c->getValue();
+        Serial.printf("BLE-cfg write: %s\n", raw.c_str());
+        DynamicJsonDocument d(512);
+        if (deserializeJson(d, raw)) { Serial.println("BLE-cfg: bad JSON"); return; }
+        const char* field = d["field"] | "";
+        const char* value = d["value"] | "";
+        if (!*field) return;
+
+        // Allowlist of writeable fields → matches NVS keys
+        static const char* ALLOWED[] = {
+            "wifi_ssid", "wifi_identity", "wifi_username", "wifi_password",
+            "server_base", "device_id", "device_token"
+        };
+        bool ok = false;
+        for (auto k : ALLOWED) if (!strcmp(field, k)) { ok = true; break; }
+        if (!ok) { Serial.printf("BLE-cfg: rejected field %s\n", field); return; }
+
+        saveConfigField(field, String(value));
+        publishStatus();
+    }
+};
+
+class CfgApplyCB : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+        std::string cmd = c->getValue();
+        Serial.printf("BLE-cfg apply: %s\n", cmd.c_str());
+        if (cmd == "reboot") {
+            Serial.println("BLE-cfg: rebooting in 1s...");
+            delay(1000);
+            ESP.restart();
+        } else if (cmd == "wifi") {
+            loadConfig();
+            connectWifi();
+            publishStatus();
+        }
+    }
+};
+
+static CfgWriteCB gCfgWriteCB;
+static CfgApplyCB gCfgApplyCB;
+
+static void startConfigGattServer() {
+    NimBLEServer* server = NimBLEDevice::createServer();
+    NimBLEService* svc = server->createService(CFG_SVC);
+
+    gCfgStatus = svc->createCharacteristic(CFG_STATUS,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+    gCfgStatus->setValue(buildStatusJson());
+
+    auto* writeChar = svc->createCharacteristic(CFG_WRITE, NIMBLE_PROPERTY::WRITE);
+    writeChar->setCallbacks(&gCfgWriteCB);
+
+    auto* applyChar = svc->createCharacteristic(CFG_APPLY, NIMBLE_PROPERTY::WRITE);
+    applyChar->setCallbacks(&gCfgApplyCB);
+
+    svc->start();
+
+    NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+    adv->addServiceUUID(CFG_SVC);
+    adv->setName("ESP32-printer-cfg");
+    adv->start();
+    Serial.println("BLE-cfg: advertising");
+}
+
 // ─── SETUP / LOOP ────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
     delay(500);
     Serial.println("\nESP32 cat-printer bridge");
 
+    loadConfig();
+
     NimBLEDevice::init("ESP32-printer");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-    NimBLEDevice::setMTU(247);             // request larger; falls back if rejected
+    NimBLEDevice::setMTU(247);
 
+    startConfigGattServer();
     connectWifi();
 }
 
@@ -421,5 +590,8 @@ void loop() {
     // processJob() blocks for ~25s on a long-poll when idle, so no extra delay
     // is needed between iterations — we already throttle naturally.
     bool worked = processJob();
+    // Refresh BLE status characteristic so any admin currently connected via
+    // Web Bluetooth sees live IP / wifi state.
+    publishStatus();
     if (worked) delay(200);
 }

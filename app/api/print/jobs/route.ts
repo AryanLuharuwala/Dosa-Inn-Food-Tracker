@@ -58,6 +58,6 @@ export async function POST(req: NextRequest) {
     }
 
     const { data, width, height } = await renderDocServer(doc);
-    const jobId = await enqueuePrintJob(data, width, height);
+    const jobId = await enqueuePrintJob(data, width, height, kind as 'bill' | 'kot' | 'test' | 'stats');
     return NextResponse.json({ ok: true, jobId, kind });
 }

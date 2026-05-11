@@ -2,6 +2,23 @@ import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getDb } from '@/lib/db';
 
+/** Per-device runtime tunables. Live-editable from /admin/print-devices and
+ *  applied on the next print job. */
+export interface DeviceSettings {
+    /** Job filter — 'all' takes any job, 'kot'/'bill' only that kind. */
+    role: 'all' | 'kot' | 'bill';
+    /** Motor speed (0x01–0xFF). Lower = slower = darker. iPrint default 34. */
+    speed: number;
+    /** Heating energy 0–65535. Higher = darker. iPrint default 13500. */
+    energy: number;
+}
+
+export const DEFAULT_SETTINGS: DeviceSettings = {
+    role:   'all',
+    speed:  34,
+    energy: 13500,
+};
+
 export interface PrintDevice {
     id: string;
     token_hash: string;
@@ -9,6 +26,7 @@ export interface PrintDevice {
     created_at: Date;
     last_seen_at: Date | null;
     revoked: boolean;
+    settings?: DeviceSettings;
 }
 
 export interface PrintJob {
@@ -17,6 +35,9 @@ export interface PrintJob {
     payload: Buffer;
     width: number;
     height: number;
+    /** Optional — present for jobs created via /api/print/jobs with `kind`.
+     *  Used for device-role filtering when claiming. */
+    kind?: 'bill' | 'kot' | 'test' | 'stats';
     status: 'queued' | 'inflight' | 'dead';
     attempts: number;
     visible_after: Date;
@@ -62,6 +83,7 @@ export async function createDevice(label: string): Promise<{ device: PrintDevice
         created_at: new Date(),
         last_seen_at: null,
         revoked: false,
+        settings: { ...DEFAULT_SETTINGS },
     };
     await db.collection<PrintDevice>('print_devices').insertOne(device);
     return { device, plainToken };
@@ -70,6 +92,25 @@ export async function createDevice(label: string): Promise<{ device: PrintDevice
 export async function revokeDevice(id: string): Promise<void> {
     const db = await getDb();
     await db.collection('print_devices').updateOne({ id }, { $set: { revoked: true } });
+}
+
+export async function updateDeviceSettings(id: string, patch: Partial<DeviceSettings>): Promise<DeviceSettings | null> {
+    const db = await getDb();
+    const dev = await db.collection<PrintDevice>('print_devices').findOne({ id });
+    if (!dev) return null;
+    const merged: DeviceSettings = { ...DEFAULT_SETTINGS, ...(dev.settings ?? {}), ...patch };
+    // Clamp to valid ranges so a bad UI input can't brick a printer.
+    merged.speed  = Math.max(1, Math.min(255, Math.floor(merged.speed)));
+    merged.energy = Math.max(0, Math.min(65535, Math.floor(merged.energy)));
+    if (!['all', 'kot', 'bill'].includes(merged.role)) merged.role = 'all';
+    await db.collection('print_devices').updateOne({ id }, { $set: { settings: merged } });
+    return merged;
+}
+
+export async function getDeviceSettings(id: string): Promise<DeviceSettings> {
+    const db = await getDb();
+    const dev = await db.collection<PrintDevice>('print_devices').findOne({ id });
+    return { ...DEFAULT_SETTINGS, ...(dev?.settings ?? {}) };
 }
 
 // ── Jobs ─────────────────────────────────────────────────────────────────────
@@ -101,7 +142,12 @@ export async function deleteJob(id: string): Promise<boolean> {
     return res.deletedCount > 0;
 }
 
-export async function enqueuePrintJob(payload: Buffer, width: number, height: number): Promise<string> {
+export async function enqueuePrintJob(
+    payload: Buffer,
+    width: number,
+    height: number,
+    kind?: PrintJob['kind'],
+): Promise<string> {
     const db = await getDb();
     const id = randomBytes(16).toString('hex');
     const job: PrintJob = {
@@ -110,6 +156,7 @@ export async function enqueuePrintJob(payload: Buffer, width: number, height: nu
         payload,
         width,
         height,
+        kind,
         status: 'queued',
         attempts: 0,
         visible_after: new Date(),
@@ -119,19 +166,29 @@ export async function enqueuePrintJob(payload: Buffer, width: number, height: nu
     return id;
 }
 
-/** Pop the next available job into inflight state. Returns null if queue empty. */
+/** Pop the next available job into inflight state. Filters by the calling
+ *  device's `settings.role` — a 'kot' printer won't pick up bill jobs, etc.
+ *  Returns null if no eligible job is available. */
 export async function claimNextJob(deviceId: string): Promise<PrintJob | null> {
     const db = await getDb();
     const now = new Date();
-    const visibleAfter = new Date(now.getTime() + 60_000); // 60s visibility timeout
+    const visibleAfter = new Date(now.getTime() + 60_000);
 
-    // findOneAndUpdate is atomic — no double-delivery.
-    // The $or also recovers stalled inflight jobs whose 60s visibility timeout
-    // has expired (device crashed before acking).
+    const settings = await getDeviceSettings(deviceId);
+    // role='all' takes anything (including legacy jobs with no kind set).
+    // role='kot'/'bill' only takes matching kind. Jobs missing `kind` are
+    // legacy / test prints — keep them available to role='all' only.
+    const kindFilter =
+        settings.role === 'all' ? {} :
+        { kind: settings.role };
+
     const result = await db.collection<PrintJob>('print_jobs').findOneAndUpdate(
-        { $or: [
-            { status: 'queued',   visible_after: { $lte: now } },
-            { status: 'inflight', visible_after: { $lte: now }, attempts: { $lt: 3 } },
+        { $and: [
+            kindFilter,
+            { $or: [
+                { status: 'queued',   visible_after: { $lte: now } },
+                { status: 'inflight', visible_after: { $lte: now }, attempts: { $lt: 3 } },
+            ] },
         ] },
         {
             $set: {

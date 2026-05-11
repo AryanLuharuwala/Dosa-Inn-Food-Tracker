@@ -3,6 +3,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import styles from './page.module.css';
+import EspConfigurator from './EspConfigurator';
+
+interface DeviceSettings {
+    role: 'all' | 'kot' | 'bill';
+    speed: number;
+    energy: number;
+}
 
 interface Device {
     id: string;
@@ -10,6 +17,7 @@ interface Device {
     created_at: string;
     last_seen_at: string | null;
     revoked: boolean;
+    settings?: DeviceSettings;
 }
 
 interface Job {
@@ -41,7 +49,26 @@ export default function PrintDevicesPage() {
     const [newToken, setNewToken] = useState<{ label: string; token: string } | null>(null);
     const [revoking, setRevoking] = useState<string | null>(null);
     const [deletingJob, setDeletingJob] = useState<string | null>(null);
+    const [openSettings, setOpenSettings] = useState<string | null>(null);
+    const [savingSettings, setSavingSettings] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const saveSettings = async (id: string, patch: Partial<DeviceSettings>) => {
+        setSavingSettings(true);
+        try {
+            const res = await fetch(`/api/print/devices/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(patch),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await load();
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setSavingSettings(false);
+        }
+    };
 
     const load = useCallback(async () => {
         const [dRes, jRes] = await Promise.all([
@@ -119,6 +146,10 @@ export default function PrintDevicesPage() {
 
             {error && <div className={styles.error}>{error}</div>}
 
+            <div style={{ margin: '12px 0 24px' }}>
+                <EspConfigurator />
+            </div>
+
             {/* One-time token display */}
             {newToken && (
                 <div className={styles.tokenBanner}>
@@ -176,25 +207,88 @@ export default function PrintDevicesPage() {
                         <tbody>
                             {active.map(d => {
                                 const { label: statusLabel, online } = onlineStatus(d.last_seen_at);
+                                const isOpen = openSettings === d.id;
+                                const s: DeviceSettings = d.settings ?? { role: 'all', speed: 34, energy: 13500 };
                                 return (
-                                    <tr key={d.id}>
-                                        <td>{d.label}</td>
-                                        <td>
-                                            <span className={online ? styles.online : styles.offline}>
-                                                {online ? '●' : '○'} {statusLabel}
-                                            </span>
-                                        </td>
-                                        <td>{new Date(d.created_at).toLocaleDateString('en-IN')}</td>
-                                        <td>
-                                            <button
-                                                className={styles.revokeBtn}
-                                                onClick={() => handleRevoke(d.id)}
-                                                disabled={revoking === d.id}
-                                            >
-                                                {revoking === d.id ? 'Revoking…' : 'Revoke'}
-                                            </button>
-                                        </td>
-                                    </tr>
+                                    <React.Fragment key={d.id}>
+                                        <tr>
+                                            <td>{d.label}</td>
+                                            <td>
+                                                <span className={online ? styles.online : styles.offline}>
+                                                    {online ? '●' : '○'} {statusLabel}
+                                                </span>
+                                                <span style={{ marginLeft: 8, fontSize: 12, color: '#6b7280' }}>
+                                                    role: <b>{s.role}</b>
+                                                </span>
+                                            </td>
+                                            <td>{new Date(d.created_at).toLocaleDateString('en-IN')}</td>
+                                            <td style={{ display: 'flex', gap: 6 }}>
+                                                <button
+                                                    onClick={() => setOpenSettings(isOpen ? null : d.id)}
+                                                    style={{
+                                                        padding: '6px 12px',
+                                                        background: isOpen ? '#0f766e' : '#374151',
+                                                        color: 'white', border: 'none', borderRadius: 6,
+                                                        fontWeight: 600, cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    {isOpen ? 'Close' : 'Settings'}
+                                                </button>
+                                                <button
+                                                    className={styles.revokeBtn}
+                                                    onClick={() => handleRevoke(d.id)}
+                                                    disabled={revoking === d.id}
+                                                >
+                                                    {revoking === d.id ? 'Revoking…' : 'Revoke'}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {isOpen && (
+                                            <tr>
+                                                <td colSpan={4} style={{ background: '#f9fafb', padding: 16 }}>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center' }}>
+                                                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Role</span>
+                                                            <select
+                                                                value={s.role}
+                                                                onChange={e => saveSettings(d.id, { role: e.target.value as DeviceSettings['role'] })}
+                                                                disabled={savingSettings}
+                                                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db' }}
+                                                            >
+                                                                <option value="all">All (KOT + Bill + everything)</option>
+                                                                <option value="kot">KOT only (kitchen printer)</option>
+                                                                <option value="bill">Bill only (cashier printer)</option>
+                                                            </select>
+                                                        </label>
+                                                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 200 }}>
+                                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                                                                Speed: <b>{s.speed}</b> {s.speed < 30 ? '(slow, dark)' : s.speed > 50 ? '(fast, light)' : ''}
+                                                            </span>
+                                                            <input
+                                                                type="range" min={10} max={80} step={1} value={s.speed}
+                                                                onChange={e => saveSettings(d.id, { speed: parseInt(e.target.value, 10) })}
+                                                                disabled={savingSettings}
+                                                            />
+                                                        </label>
+                                                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 220 }}>
+                                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                                                                Energy (darkness): <b>{s.energy}</b>
+                                                            </span>
+                                                            <input
+                                                                type="range" min={6000} max={20000} step={500} value={s.energy}
+                                                                onChange={e => saveSettings(d.id, { energy: parseInt(e.target.value, 10) })}
+                                                                disabled={savingSettings}
+                                                            />
+                                                        </label>
+                                                        {savingSettings && <span style={{ fontSize: 12, color: '#6b7280' }}>Saving…</span>}
+                                                    </div>
+                                                    <p style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>
+                                                        Changes apply on the device's next long-poll cycle (~25s).
+                                                    </p>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 );
                             })}
                         </tbody>
