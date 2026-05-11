@@ -12,6 +12,17 @@ interface Device {
     revoked: boolean;
 }
 
+interface Job {
+    id: string;
+    device_id: string | null;
+    width: number;
+    height: number;
+    status: 'queued' | 'inflight' | 'dead';
+    attempts: number;
+    created_at: string;
+    visible_after: string;
+}
+
 function onlineStatus(last_seen_at: string | null): { label: string; online: boolean } {
     if (!last_seen_at) return { label: 'Never seen', online: false };
     const ago = Date.now() - new Date(last_seen_at).getTime();
@@ -23,24 +34,44 @@ function onlineStatus(last_seen_at: string | null): { label: string; online: boo
 
 export default function PrintDevicesPage() {
     const [devices, setDevices] = useState<Device[]>([]);
+    const [jobs, setJobs] = useState<Job[]>([]);
     const [loading, setLoading] = useState(true);
     const [newLabel, setNewLabel] = useState('');
     const [creating, setCreating] = useState(false);
     const [newToken, setNewToken] = useState<{ label: string; token: string } | null>(null);
     const [revoking, setRevoking] = useState<string | null>(null);
+    const [deletingJob, setDeletingJob] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const load = useCallback(async () => {
-        const res = await fetch('/api/print/devices');
-        if (res.ok) setDevices(await res.json());
+        const [dRes, jRes] = await Promise.all([
+            fetch('/api/print/devices'),
+            fetch('/api/print/jobs'),
+        ]);
+        if (dRes.ok) setDevices(await dRes.json());
+        if (jRes.ok) setJobs(await jRes.json());
         setLoading(false);
     }, []);
 
     useEffect(() => {
         load();
-        const t = setInterval(load, 10_000);
+        const t = setInterval(load, 5_000); // tighter refresh — queue moves fast
         return () => clearInterval(t);
     }, [load]);
+
+    const handleDeleteJob = async (id: string) => {
+        if (!confirm('Remove this print job from the queue?')) return;
+        setDeletingJob(id);
+        try {
+            const res = await fetch(`/api/print/jobs/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(await res.text());
+            await load();
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setDeletingJob(null);
+        }
+    };
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -166,6 +197,70 @@ export default function PrintDevicesPage() {
                                     </tr>
                                 );
                             })}
+                        </tbody>
+                    </table>
+                )}
+            </section>
+
+            {/* Pending print jobs */}
+            <section className={styles.section}>
+                <h2>Pending Print Jobs <span style={{ color: '#6b7280', fontWeight: 400, fontSize: '0.85em' }}>({jobs.length})</span></h2>
+                {jobs.length === 0 ? (
+                    <p className={styles.empty}>No jobs in the queue.</p>
+                ) : (
+                    <table className={styles.table}>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Status</th>
+                                <th>Size</th>
+                                <th>Attempts</th>
+                                <th>Created</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {jobs.map(j => (
+                                <tr key={j.id}>
+                                    <td><code style={{ fontSize: 12 }}>{j.id.slice(0, 8)}…</code></td>
+                                    <td>
+                                        <span style={{
+                                            display: 'inline-block',
+                                            padding: '2px 8px',
+                                            borderRadius: 4,
+                                            fontSize: 12,
+                                            fontWeight: 600,
+                                            background: j.status === 'queued'   ? '#dbeafe' :
+                                                        j.status === 'inflight' ? '#fef3c7' :
+                                                                                   '#fee2e2',
+                                            color:      j.status === 'queued'   ? '#1e40af' :
+                                                        j.status === 'inflight' ? '#92400e' :
+                                                                                   '#991b1b',
+                                        }}>{j.status}</span>
+                                    </td>
+                                    <td>{j.width} × {j.height}</td>
+                                    <td>{j.attempts}</td>
+                                    <td>{new Date(j.created_at).toLocaleTimeString('en-IN')}</td>
+                                    <td>
+                                        <button
+                                            onClick={() => handleDeleteJob(j.id)}
+                                            disabled={deletingJob === j.id}
+                                            style={{
+                                                padding: '6px 14px',
+                                                background: '#dc2626',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: 6,
+                                                fontWeight: 600,
+                                                cursor: deletingJob === j.id ? 'wait' : 'pointer',
+                                                opacity: deletingJob === j.id ? 0.6 : 1,
+                                            }}
+                                        >
+                                            {deletingJob === j.id ? '…' : 'Remove'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 )}

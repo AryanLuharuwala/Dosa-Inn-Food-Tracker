@@ -55,8 +55,10 @@ async function measureHeight(doc: DocLine[], mctx: CanvasRenderingContext2D): Pr
     return h + 12;
 }
 
-/** Convert canvas ImageData to MSB-first 1-bit packed bytes. */
-function imageDataToMSBFirst(
+/** Convert canvas ImageData to LSB-first 1-bit packed bytes — what the
+ *  cat-printer firmware expects (matches imageDataToBitmap in catPrinter.ts).
+ *  Each output byte is 8 horizontal pixels with bit 0 = leftmost. */
+function imageDataToBitmap(
     data: Uint8ClampedArray,
     width: number,
     height: number,
@@ -69,7 +71,7 @@ function imageDataToMSBFirst(
             if (a === 0) continue; // transparent → white
             const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
             if (lum < 128) {
-                out[y * BYTES_PER_ROW + (x >> 3)] |= 0x80 >> (x & 7);
+                out[y * BYTES_PER_ROW + (x >> 3)] |= 1 << (x & 7);
             }
         }
     }
@@ -151,7 +153,7 @@ export async function renderDocServer(doc: DocLine[]): Promise<{ data: Buffer; w
     }
 
     const imgData = ctx.getImageData(0, 0, PAPER_WIDTH, height);
-    const data = imageDataToMSBFirst(
+    const data = imageDataToBitmap(
         imgData.data as unknown as Uint8ClampedArray,
         PAPER_WIDTH,
         height,

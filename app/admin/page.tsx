@@ -101,22 +101,36 @@ export default function AdminPage() {
     const printNCopies = async (n: number, send: () => Promise<void>) => {
         for (let i = 0; i < Math.max(1, n); i++) await send();
     };
+    // Fire-and-forget enqueue to the ESP32 bridge. Runs in parallel with direct
+    // BLE when the browser is paired; when only the ESP bridge is online,
+    // this is the sole printing path (and that's fine).
+    const enqueueJob = (kind: 'bill' | 'kot', orderId: string) => {
+        fetch('/api/print/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId, kind }),
+        }).catch(() => {});
+    };
     const handlePrintKOT = async (order: Order) => {
         setPrintingId(order.orderId);
-        try { await printNCopies(kotCopies, () => printer.printKOT(order, restaurantName)); }
+        try {
+            enqueueJob('kot', order.orderId);
+            // Only attempt browser BLE if it's actually paired — otherwise the
+            // ESP queue alone handles it.
+            if (printer.isConnected) {
+                await printNCopies(kotCopies, () => printer.printKOT(order, restaurantName));
+            }
+        }
         catch (e) { alert((e as Error).message); }
         finally { setPrintingId(null); }
     };
     const handlePrintBill = async (order: Order) => {
         setPrintingId(order.orderId);
         try {
-            // Fire-and-forget: enqueue to the ESP32 bridge queue in parallel with BLE
-            fetch('/api/print/jobs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orderId: order.orderId }),
-            }).catch(() => {});
-            await printNCopies(billCopies, () => printer.printBill(order, restaurantName, { template: billTemplate, tagline: contextTagline }));
+            enqueueJob('bill', order.orderId);
+            if (printer.isConnected) {
+                await printNCopies(billCopies, () => printer.printBill(order, restaurantName, { template: billTemplate, tagline: contextTagline }));
+            }
         }
         catch (e) { alert((e as Error).message); }
         finally { setPrintingId(null); }
@@ -739,12 +753,29 @@ export default function AdminPage() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px',
-                        marginRight: '15px',
                     }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2M12 12v3"/>
                         </svg>
                         Sessions
+                    </Link>
+                    <Link href="/admin/print-devices" style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#0f766e',
+                        color: 'white',
+                        borderRadius: '6px',
+                        textDecoration: 'none',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginRight: '15px',
+                    }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+                        </svg>
+                        Printers
                     </Link>
 
                     <span className={rushHourMode ? styles.rushActive : ''}>

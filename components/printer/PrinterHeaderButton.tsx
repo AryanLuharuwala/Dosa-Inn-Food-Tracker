@@ -2,22 +2,32 @@
 
 import React, { useState } from 'react';
 import { usePrinter } from './usePrinter';
+import { useEspPrinterStatus } from './useEspPrinterStatus';
 
 /**
- * Small pill that lives in the admin top bar so the printer connect flow is
- * one tap from any tab. Clicking when disconnected opens the OS device
- * picker; clicking when connected shows the device name + a disconnect
- * affordance via tooltip.
+ * Small pill in the admin top bar showing printer availability and gating
+ * the browser-BLE connect flow.
+ *
+ * Two paths feed into "printer available":
+ *   1. Browser Web Bluetooth pairing (direct BLE)
+ *   2. ESP32 bridge online (any registered device with last_seen < 60s)
+ *
+ * If neither is available the button still lets you trigger Web Bluetooth.
+ * If only the ESP is online we render a non-interactive green badge —
+ * print jobs flow through the server queue, no browser pairing needed.
  */
 export default function PrinterHeaderButton() {
     const { isSupported, isConnected, isReconnecting, deviceName, connect, disconnect } = usePrinter();
+    const esp = useEspPrinterStatus();
     const [busy, setBusy] = useState(false);
 
-    if (!isSupported) {
-        return null; // header stays clean on incompatible browsers
+    // No Web Bluetooth AND no ESP → hide entirely (incompatible env, no devices)
+    if (!isSupported && !esp.online) {
+        return null;
     }
 
     const onClick = async () => {
+        if (!isSupported) return; // can't pair browser BLE here
         setBusy(true);
         try {
             if (isConnected) {
@@ -29,38 +39,44 @@ export default function PrinterHeaderButton() {
             }
         } catch (e) {
             const msg = (e as Error).message;
-            // Picker cancel = harmless; everything else (incl. GATT failures
-            // from connectGattWithRetry) gets surfaced. The thrown message
-            // already includes a remediation hint.
-            if (/cancel/i.test(msg) || /No matching|chooser/i.test(msg)) {
-                return;
-            }
+            if (/cancel/i.test(msg) || /No matching|chooser/i.test(msg)) return;
             alert(msg + '\n\nTip: open Admin → WA tab → Bluetooth Printer for the full troubleshooting checklist.');
         } finally {
             setBusy(false);
         }
     };
 
+    // "any path connected" → green
+    const anyConnected = isConnected || esp.online;
+    const label =
+        busy            ? '…'                          :
+        isReconnecting  ? 'Reconnecting…'              :
+        isConnected     ? (deviceName ?? 'Printer')    :
+        esp.online      ? `ESP: ${esp.label ?? 'online'}` :
+        'Connect Printer';
+    const title =
+        isConnected && esp.online ? `Connected to ${deviceName} (browser BLE) + ESP ${esp.label} online` :
+        isConnected               ? `Connected to ${deviceName ?? 'printer'} — click to disconnect` :
+        esp.online                ? `ESP bridge ${esp.label ?? ''} online (printing via server queue)` :
+        isReconnecting            ? 'Reconnecting to printer…' :
+                                    'Connect Bluetooth printer';
+
     return (
         <button
             type="button"
             onClick={onClick}
-            disabled={busy || isReconnecting}
-            title={
-                isConnected ? `Connected to ${deviceName ?? 'printer'} — click to disconnect` :
-                isReconnecting ? 'Reconnecting to printer…' :
-                'Connect Bluetooth printer'
-            }
+            disabled={busy || isReconnecting || (!isSupported)}
+            title={title}
             style={{
                 marginRight: 8,
                 padding: '6px 12px',
-                background: isConnected ? '#16a34a' : isReconnecting ? '#d97706' : '#374151',
+                background: anyConnected ? '#16a34a' : isReconnecting ? '#d97706' : '#374151',
                 color: 'white',
                 border: 'none',
                 borderRadius: 6,
                 fontSize: 14,
                 fontWeight: 600,
-                cursor: (busy || isReconnecting) ? 'wait' : 'pointer',
+                cursor: !isSupported ? 'default' : (busy || isReconnecting) ? 'wait' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -68,15 +84,10 @@ export default function PrinterHeaderButton() {
             }}
         >
             <span aria-hidden style={{ fontSize: 14 }}>🖨</span>
-            <span>{
-                busy ? '…' :
-                isReconnecting ? 'Reconnecting…' :
-                isConnected ? (deviceName ?? 'Printer') :
-                'Connect Printer'
-            }</span>
+            <span>{label}</span>
             <span aria-hidden style={{
                 width: 8, height: 8, borderRadius: '50%',
-                background: isConnected ? '#86efac' : isReconnecting ? '#fde68a' : '#9ca3af',
+                background: anyConnected ? '#86efac' : isReconnecting ? '#fde68a' : '#9ca3af',
             }} />
         </button>
     );

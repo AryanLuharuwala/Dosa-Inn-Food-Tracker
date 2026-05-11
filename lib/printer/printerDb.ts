@@ -74,6 +74,33 @@ export async function revokeDevice(id: string): Promise<void> {
 
 // ── Jobs ─────────────────────────────────────────────────────────────────────
 
+/** Job summary for the admin UI — same as PrintJob but without the bitmap
+ *  payload (binary, large, never useful in the UI). */
+export interface PrintJobSummary {
+    id: string;
+    device_id: string | null;
+    width: number;
+    height: number;
+    status: 'queued' | 'inflight' | 'dead';
+    attempts: number;
+    visible_after: Date;
+    created_at: Date;
+}
+
+export async function listJobs(): Promise<PrintJobSummary[]> {
+    const db = await getDb();
+    return db.collection<PrintJob>('print_jobs')
+        .find({}, { projection: { payload: 0 } } as { projection: Record<string, 0 | 1> })
+        .sort({ created_at: 1 })
+        .toArray() as unknown as PrintJobSummary[];
+}
+
+export async function deleteJob(id: string): Promise<boolean> {
+    const db = await getDb();
+    const res = await db.collection<PrintJob>('print_jobs').deleteOne({ id });
+    return res.deletedCount > 0;
+}
+
 export async function enqueuePrintJob(payload: Buffer, width: number, height: number): Promise<string> {
     const db = await getDb();
     const id = randomBytes(16).toString('hex');
