@@ -5,6 +5,46 @@
 
 .content {
     padding: var(--space-md);
+    /* leave room for the sticky bottom action bar so its content never overlaps the
+       last section. ~120px button + 16px breathing room + iOS safe area. */
+    padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Sticky bottom action bar — like a checkout footer */
+.actionBar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    background: var(--color-bg-card, #fff);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.actionBarTotal {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.82rem;
+    color: var(--color-text-muted, #666);
+}
+
+.actionBarTotal strong {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--color-text, #1a1a1a);
+}
+
+.actionBarHint {
+    font-size: 0.72rem;
+    color: var(--color-text-muted, #888);
+    text-align: center;
+    margin-top: 4px;
 }
 
 .section {
@@ -173,47 +213,67 @@
     color: var(--color-text);
 }
 
-/* PhonePe Button */
-.phonePeBtn {
+/* Primary pay/place-order CTA */
+.payBtn {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     gap: var(--space-sm);
     width: 100%;
-    padding: var(--space-lg);
-    background: linear-gradient(135deg, #5F259F 0%, #7B2FBE 100%);
-    color: white;
+    padding: 16px 20px;
+    background: var(--color-primary, #1a4d2e);
+    color: #fff;
     border: none;
-    border-radius: var(--radius-lg);
-    font-size: var(--font-size-base);
+    border-radius: 14px;
+    font-size: 1rem;
     font-weight: 700;
+    letter-spacing: 0.01em;
     cursor: pointer;
-    transition: all var(--transition-fast);
-    box-shadow: 0 4px 16px rgba(95, 37, 159, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    box-shadow: 0 6px 18px rgba(26, 77, 46, 0.28);
+    min-height: 56px;
 }
 
-.phonePeBtn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(95, 37, 159, 0.45);
+.payBtn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(26, 77, 46, 0.36);
 }
 
-.phonePeBtn:disabled {
-    opacity: 0.7;
+.payBtn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.payBtn:disabled {
+    opacity: 0.55;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
-.phonePeLogo {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: white;
-    color: #5F259F;
-    border-radius: 8px;
-    font-size: var(--font-size-sm);
-    font-weight: 900;
+.payBtnLabel {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.2;
+}
+
+.payBtnLabel small {
+    font-size: 0.7rem;
+    font-weight: 500;
+    opacity: 0.75;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.payBtnAmount {
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+
+.payBtnArrow {
     flex-shrink: 0;
+    opacity: 0.9;
 }
 
 /* Error Box */

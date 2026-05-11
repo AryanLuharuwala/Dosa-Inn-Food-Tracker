@@ -321,48 +321,7 @@ function CheckoutPageInner() {
                         </div>
                     )}
 
-                    {/* Cashfree Payment */}
-                    <div className={styles.section}>
-                        <h2 className={styles.sectionTitle}>Pay Securely</h2>
-                        <p className={styles.sectionSubtitle}>You'll be redirected to Cashfree to complete payment via UPI, cards, or net banking.</p>
-
-                        {error && (
-                            <div className={styles.errorBox}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
-                                </svg>
-                                {error}
-                            </div>
-                        )}
-
-                        {paymentsEnabled ? (
-                            <button
-                                className={styles.phonePeBtn}
-                                onClick={handleCashfreePayment}
-                                disabled={isProcessing}
-                            >
-                                <span style={{ fontWeight: 700, letterSpacing: '0.02em' }}>CF</span>
-                                <span>Pay ₹{billAmount} with Cashfree</span>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </button>
-                        ) : (
-                            <button
-                                className={styles.phonePeBtn}
-                                onClick={handleCounterOrder}
-                                disabled={isProcessing}
-                            >
-                                <span>Place Order · ₹{billAmount}</span>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Payment info */}
+                    {/* Payment context / info (button moved to sticky bottom bar) */}
                     <div className={styles.infoBox}>
                         {paymentsEnabled ? (
                             <>
@@ -403,6 +362,41 @@ function CheckoutPageInner() {
                             </div>
                         )}
                     </div>
+                </div>
+
+                {/* Sticky bottom action bar — always visible, safe-area aware */}
+                <div className={styles.actionBar}>
+                    {error && (
+                        <div className={styles.errorBox} style={{ marginBottom: 0 }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
+                            </svg>
+                            {error}
+                        </div>
+                    )}
+                    <div className={styles.actionBarTotal}>
+                        <span>{totalItemsCount} item{totalItemsCount !== 1 ? 's' : ''}</span>
+                        <strong>₹{billAmount}</strong>
+                    </div>
+                    <button
+                        className={styles.payBtn}
+                        onClick={paymentsEnabled ? handleCashfreePayment : handleCounterOrder}
+                        disabled={isProcessing}
+                    >
+                        <span className={styles.payBtnLabel}>
+                            <small>{paymentsEnabled ? 'Pay securely' : 'Place order'}</small>
+                            <span className={styles.payBtnAmount}>
+                                {paymentsEnabled ? `Pay ₹${billAmount}` : `Confirm · ₹${billAmount}`}
+                            </span>
+                        </span>
+                        <svg className={styles.payBtnArrow} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </button>
+                    {paymentsEnabled && (
+                        <p className={styles.actionBarHint}>You&apos;ll be redirected to Cashfree to complete payment.</p>
+                    )}
                 </div>
             </div>
         </>

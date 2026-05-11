@@ -347,6 +347,9 @@ export default function AdminPage() {
     // backlog.
     const bellRef = useRef<HTMLAudioElement | null>(null);
     const prevOrderIdsRef = useRef<Set<string> | null>(null);
+    // Captured once on mount. Orders created before this moment are backlog
+    // and must never auto-print, even if they arrive late from loadAll().
+    const mountedAtRef = useRef<number>(Date.now());
     useEffect(() => {
         bellRef.current = new Audio('/sounds/bell.mp3');
         bellRef.current.volume = 0.7;
@@ -361,7 +364,16 @@ export default function AdminPage() {
             return;
         }
 
-        const newOrders = orders.filter(o => !prevIds.has(o.orderId));
+        // Only treat an order as "new" if it (a) wasn't in the previous snapshot
+        // AND (b) was created after the admin page was opened. (b) protects
+        // against the case where loadAll() returns orders late — those would
+        // otherwise look new on the first non-null tick and auto-print the
+        // entire backlog.
+        const newOrders = orders.filter(o => {
+            if (prevIds.has(o.orderId)) return false;
+            const ts = o.timestamp ? new Date(o.timestamp).getTime() : 0;
+            return ts >= mountedAtRef.current;
+        });
         if (newOrders.length > 0) {
             bellRef.current?.play().catch(() => {});
             if (autoPrintOrders && printer.isConnected) {
