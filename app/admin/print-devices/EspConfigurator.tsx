@@ -62,11 +62,11 @@ export default function EspConfigurator() {
             const write   = await svc.getCharacteristic(CFG_WRITE);
             const apply   = await svc.getCharacteristic(CFG_APPLY);
             await status.startNotifications();
-            // BluetoothRemoteGATTCharacteristic extends EventTarget at runtime,
-            // but TS lib doesn't declare it. Cast through unknown both ways.
-            (status as unknown as EventTarget).addEventListener('characteristicvaluechanged', (e: Event) => {
-                const t = e.target as unknown as BluetoothRemoteGATTCharacteristic;
-                const v = t?.value;
+            // TS lib for Web Bluetooth is incomplete (no addEventListener,
+            // no `value` property declared) — use a minimal structural type.
+            type CharLike = EventTarget & { value?: DataView };
+            (status as unknown as CharLike).addEventListener('characteristicvaluechanged', (e: Event) => {
+                const v = (e.target as unknown as CharLike)?.value;
                 if (!v) return;
                 try { setStatus(JSON.parse(new TextDecoder().decode(v))); } catch {}
             });
