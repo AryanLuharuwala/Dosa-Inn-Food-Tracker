@@ -117,8 +117,8 @@ export default function PreorderPage() {
                 {/* Content */}
                 <div className={styles.content}>
                     <div className={styles.titleSection}>
-                        <h1 className={styles.title}>Skip the Wait</h1>
-                        <p className={styles.subtitle}>Order now, food ready when you arrive!</p>
+                        <h1 className={styles.title}>Takeaway</h1>
+                        <p className={styles.subtitle}>Order ahead, pick up when ready!</p>
                     </div>
 
                     {isAfterHours ? (
@@ -209,7 +209,7 @@ export default function PreorderPage() {
                         </svg>
                     </button>
                     {isAfterHours && (
-                        <p className={styles.closedNote}>Preorders open 10 AM – 10 PM</p>
+                        <p className={styles.closedNote}>Takeaway orders open 10 AM – 10 PM</p>
                     )}
                 </div>
             </div>

@@ -137,7 +137,7 @@ function CheckoutPageInner() {
         }
     };
 
-    const handlePhonePePayment = async () => {
+    const handleCashfreePayment = async () => {
         setError('');
         setIsProcessing(true);
 
@@ -184,10 +184,22 @@ function CheckoutPageInner() {
             };
             localStorage.setItem('pendingOrder', JSON.stringify(pendingOrder));
 
-            const res = await fetch('/api/phonepe/initiate', {
+            const customerPhone = orderType === 'preorder'
+                ? preorderDetails?.customerPhone
+                : whatsappPhone || undefined;
+            const customerName = orderType === 'preorder'
+                ? preorderDetails?.customerName
+                : undefined;
+
+            const res = await fetch('/api/cashfree/initiate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ merchantOrderId: tempOrderId, amount: billAmount }),
+                body: JSON.stringify({
+                    merchantOrderId: tempOrderId,
+                    amount: billAmount,
+                    customerPhone,
+                    customerName,
+                }),
             });
 
             const data = await res.json();
@@ -196,10 +208,9 @@ function CheckoutPageInner() {
                 throw new Error(typeof data.error === 'string' ? data.error : 'Failed to initiate payment');
             }
 
-            // Store both IDs: merchantOrderId for status check, phonePeOrderId for reference
+            // Store merchantOrderId for status check on return
             const stored = JSON.parse(localStorage.getItem('pendingOrder') || '{}');
             stored.merchantOrderId = tempOrderId;
-            stored.phonePeOrderId = data.phonePeOrderId;
             const storedStr = JSON.stringify(stored);
             localStorage.setItem('pendingOrder', storedStr);
             // Backup keyed by merchantOrderId — survives if 'pendingOrder' gets cleared
@@ -310,10 +321,10 @@ function CheckoutPageInner() {
                         </div>
                     )}
 
-                    {/* PhonePe Payment */}
+                    {/* Cashfree Payment */}
                     <div className={styles.section}>
                         <h2 className={styles.sectionTitle}>Pay Securely</h2>
-                        <p className={styles.sectionSubtitle}>You'll be redirected to PhonePe to complete payment via UPI, cards, or net banking.</p>
+                        <p className={styles.sectionSubtitle}>You'll be redirected to Cashfree to complete payment via UPI, cards, or net banking.</p>
 
                         {error && (
                             <div className={styles.errorBox}>
@@ -328,11 +339,11 @@ function CheckoutPageInner() {
                         {paymentsEnabled ? (
                             <button
                                 className={styles.phonePeBtn}
-                                onClick={handlePhonePePayment}
+                                onClick={handleCashfreePayment}
                                 disabled={isProcessing}
                             >
-                                <span className={styles.phonePeLogo}>Pe</span>
-                                <span>Pay ₹{billAmount} with PhonePe</span>
+                                <span style={{ fontWeight: 700, letterSpacing: '0.02em' }}>CF</span>
+                                <span>Pay ₹{billAmount} with Cashfree</span>
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                     <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
@@ -361,7 +372,7 @@ function CheckoutPageInner() {
                                 </svg>
                                 <div>
                                     <p className={styles.infoTitle}>Secure Payment</p>
-                                    <p className={styles.infoText}>Powered by PhonePe — supports UPI, credit/debit cards, and net banking. 256-bit encrypted.</p>
+                                    <p className={styles.infoText}>Powered by Cashfree — supports UPI, credit/debit cards, and net banking. 256-bit encrypted.</p>
                                 </div>
                             </>
                         ) : (

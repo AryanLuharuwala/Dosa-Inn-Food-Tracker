@@ -168,6 +168,11 @@ function ReceiptPreview({ template, restaurantName, tagline }: {
                             <span>Name</span><span>{order.customerName}</span>
                         </div>
                     )}
+                    {template.orderInfo.showCustomerPhone && (
+                        <div className={styles.previewMetaRow}>
+                            <span>Phone</span><span>+91 98765 43210</span>
+                        </div>
+                    )}
                 </div>
                 <div className={styles.previewDivider}>{'─'.repeat(32)}</div>
 
@@ -400,6 +405,9 @@ export default function BillEditorPage() {
                         </Row>
                         <Row label="Show Customer Name">
                             <Toggle checked={template.orderInfo.showCustomerName} onChange={v => set('orderInfo', { showCustomerName: v })} />
+                        </Row>
+                        <Row label="Show Customer Phone">
+                            <Toggle checked={template.orderInfo.showCustomerPhone} onChange={v => set('orderInfo', { showCustomerPhone: v })} />
                         </Row>
                     </Section>
 

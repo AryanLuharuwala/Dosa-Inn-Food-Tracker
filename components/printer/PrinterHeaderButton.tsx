@@ -10,7 +10,7 @@ import { usePrinter } from './usePrinter';
  * affordance via tooltip.
  */
 export default function PrinterHeaderButton() {
-    const { isSupported, isConnected, deviceName, connect, disconnect } = usePrinter();
+    const { isSupported, isConnected, isReconnecting, deviceName, connect, disconnect } = usePrinter();
     const [busy, setBusy] = useState(false);
 
     if (!isSupported) {
@@ -45,18 +45,22 @@ export default function PrinterHeaderButton() {
         <button
             type="button"
             onClick={onClick}
-            disabled={busy}
-            title={isConnected ? `Connected to ${deviceName ?? 'printer'} — click to disconnect` : 'Connect Bluetooth printer'}
+            disabled={busy || isReconnecting}
+            title={
+                isConnected ? `Connected to ${deviceName ?? 'printer'} — click to disconnect` :
+                isReconnecting ? 'Reconnecting to printer…' :
+                'Connect Bluetooth printer'
+            }
             style={{
                 marginRight: 8,
                 padding: '6px 12px',
-                background: isConnected ? '#16a34a' : '#374151',
+                background: isConnected ? '#16a34a' : isReconnecting ? '#d97706' : '#374151',
                 color: 'white',
                 border: 'none',
                 borderRadius: 6,
                 fontSize: 14,
                 fontWeight: 600,
-                cursor: busy ? 'wait' : 'pointer',
+                cursor: (busy || isReconnecting) ? 'wait' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -64,10 +68,15 @@ export default function PrinterHeaderButton() {
             }}
         >
             <span aria-hidden style={{ fontSize: 14 }}>🖨</span>
-            <span>{busy ? '…' : isConnected ? (deviceName ?? 'Printer') : 'Connect Printer'}</span>
+            <span>{
+                busy ? '…' :
+                isReconnecting ? 'Reconnecting…' :
+                isConnected ? (deviceName ?? 'Printer') :
+                'Connect Printer'
+            }</span>
             <span aria-hidden style={{
                 width: 8, height: 8, borderRadius: '50%',
-                background: isConnected ? '#86efac' : '#9ca3af',
+                background: isConnected ? '#86efac' : isReconnecting ? '#fde68a' : '#9ca3af',
             }} />
         </button>
     );

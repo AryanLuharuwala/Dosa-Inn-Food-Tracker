@@ -7,15 +7,13 @@ const ENV_FILE = path.join(process.cwd(), '.env.local');
 
 const EDITABLE_KEYS = [
     'ADMIN_PASSWORD',
-    'PHONEPE_CLIENT_ID',
-    'PHONEPE_CLIENT_SECRET',
-    'PHONEPE_CLIENT_VERSION',
-    'PHONEPE_ENV',
-    'PHONEPE_MERCHANT_ID',
+    'CASHFREE_APP_ID',
+    'CASHFREE_SECRET_KEY',
+    'CASHFREE_ENV',
     'NEXT_PUBLIC_BASE_URL',
 ] as const;
 
-const SENSITIVE_KEYS = new Set(['ADMIN_PASSWORD', 'PHONEPE_CLIENT_SECRET']);
+const SENSITIVE_KEYS = new Set(['ADMIN_PASSWORD', 'CASHFREE_SECRET_KEY']);
 
 function readEnvFile(): Record<string, string> {
     try {

@@ -13,6 +13,7 @@ export interface BillTemplate {
     showTable: boolean;
     showDateTime: boolean;
     showCustomerName: boolean;
+    showCustomerPhone: boolean;
   };
   items: {
     fontSize: 'sm' | 'md' | 'lg';
@@ -52,6 +53,7 @@ export const DEFAULT_BILL_TEMPLATE: BillTemplate = {
     showTable: true,
     showDateTime: true,
     showCustomerName: false,
+    showCustomerPhone: true,
   },
   items: {
     fontSize: 'md',

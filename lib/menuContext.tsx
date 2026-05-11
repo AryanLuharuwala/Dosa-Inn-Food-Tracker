@@ -52,6 +52,7 @@ interface MenuContextType {
     rushHourItems: string[];
     restaurantName: string;
     tagline: string;
+    legalName: string;
     paymentsEnabled: boolean;
     kotCopies: number;
     billCopies: number;
@@ -74,7 +75,7 @@ interface MenuContextType {
     deleteOrder: (orderId: string) => void;
     getAvailableItems: () => MenuItem[];
     refreshMenuState: () => void;
-    updateBranding: (name: string, tagline: string) => Promise<void>;
+    updateBranding: (name: string, tagline: string, legalName?: string) => Promise<void>;
     setPaymentsEnabled: (enabled: boolean) => Promise<void>;
     setPrintCopies: (kot: number, bill: number) => Promise<void>;
     setAutoPrintOrders: (enabled: boolean) => Promise<void>;
@@ -112,6 +113,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
     const [rushHourItems, setRushHourItemsState] = useState<string[]>([]);
     const [restaurantName, setRestaurantName] = useState('Rocky Da Adda');
     const [tagline, setTagline] = useState('100% Pure Veg');
+    const [legalName, setLegalName] = useState('');
     // Default false — server returns the persisted value on first settings load.
     const [paymentsEnabled, setPaymentsEnabledState] = useState(false);
     const [kotCopies, setKotCopiesState] = useState(1);
@@ -147,6 +149,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
                     rushHourItems: string[];
                     restaurantName?: string;
                     tagline?: string;
+                    legalName?: string;
                     paymentsEnabled?: boolean;
                     kotCopies?: number;
                     billCopies?: number;
@@ -158,6 +161,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
                     setRushHourItemsState(settings.rushHourItems);
                     if (settings.restaurantName) setRestaurantName(settings.restaurantName);
                     if (settings.tagline !== undefined) setTagline(settings.tagline);
+                    if (settings.legalName !== undefined) setLegalName(settings.legalName);
                     if (settings.paymentsEnabled !== undefined) setPaymentsEnabledState(settings.paymentsEnabled);
                     if (typeof settings.kotCopies === 'number') setKotCopiesState(settings.kotCopies);
                     if (typeof settings.billCopies === 'number') setBillCopiesState(settings.billCopies);
@@ -284,11 +288,12 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         await dbPost('settings_save', { settings: { rushHourMode, rushHourItems: itemIds } });
     }, [rushHourMode]);
 
-    const updateBranding = useCallback(async (name: string, tl: string) => {
+    const updateBranding = useCallback(async (name: string, tl: string, ln?: string) => {
         setRestaurantName(name);
         setTagline(tl);
-        await dbPost('settings_save', { settings: { rushHourMode, rushHourItems, restaurantName: name, tagline: tl, paymentsEnabled } });
-    }, [rushHourMode, rushHourItems, paymentsEnabled]);
+        if (ln !== undefined) setLegalName(ln);
+        await dbPost('settings_save', { settings: { rushHourMode, rushHourItems, restaurantName: name, tagline: tl, legalName: ln ?? legalName, paymentsEnabled } });
+    }, [rushHourMode, rushHourItems, legalName, paymentsEnabled]);
 
     const setPaymentsEnabled = useCallback(async (enabled: boolean) => {
         setPaymentsEnabledState(enabled);
@@ -365,7 +370,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         <MenuContext.Provider value={{
             menuItems, categories, modifierGroups, orders,
             rushHourMode, rushHourItems,
-            restaurantName, tagline, paymentsEnabled,
+            restaurantName, tagline, legalName, paymentsEnabled,
             kotCopies, billCopies, autoPrintOrders,
             toggleItemAvailability, updateItemPrice,
             addMenuItem, updateMenuItem, deleteMenuItem,

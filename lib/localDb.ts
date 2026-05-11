@@ -392,8 +392,9 @@ export interface Settings {
     rushHourItems: string[];
     restaurantName?: string;
     tagline?: string;
-    /** Master switch. When false, customers don't see PhonePe and pay at the
-     *  counter — orders go straight to confirmation with paymentMethod='counter'. */
+    /** Legal/registered business name — required by payment gateways for compliance. */
+    legalName?: string;
+    /** Master switch. When false, customers skip the gateway and pay at the counter. */
     paymentsEnabled?: boolean;
     /** Copies the printer should produce per "Print KOT" click (default 1). */
     kotCopies?: number;
@@ -413,7 +414,7 @@ export async function getSettings(): Promise<Settings> {
         rushHourItems: (doc?.rushHourItems as string[]) ?? [],
         restaurantName: (doc?.restaurantName as string) ?? 'Rocky Da Adda',
         tagline: (doc?.tagline as string) ?? '100% Pure Veg',
-        // Default OFF until PhonePe registration is complete — counter payment only.
+        legalName: (doc?.legalName as string) ?? '',
         paymentsEnabled: (doc?.paymentsEnabled as boolean) ?? false,
         kotCopies: clampCopies(doc?.kotCopies as number | undefined, 1),
         billCopies: clampCopies(doc?.billCopies as number | undefined, 1),

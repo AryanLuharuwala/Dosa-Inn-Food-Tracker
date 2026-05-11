@@ -166,7 +166,7 @@ export default function LandingPage() {
               <circle cx="12" cy="12" r="10" />
               <path d="M12 6v6l4 2" />
             </svg>
-            <span>Skip the Wait</span>
+            <span>Takeaway</span>
           </button>
           <p className={styles.ctaSubtext}>Scan. Order. Eat. Repeat.</p>
         </div>

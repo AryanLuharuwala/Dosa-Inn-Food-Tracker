@@ -45,6 +45,7 @@ export function usePrinter() {
     return {
         isSupported: client.isSupported(),
         isConnected: client.isConnected(),
+        isReconnecting: client.isReconnecting(),
         deviceName: client.name(),
         protocol: client.getProtocol(),
         diagnostics: client.getDiagnostics(),

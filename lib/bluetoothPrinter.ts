@@ -56,6 +56,12 @@ function concat(...arrs: Uint8Array[]): Uint8Array {
 
 const CMD = {
     init:        b(ESC, 0x40),                          // ESC @ — reset
+    /** ESC 7 n1 n2 n3 — heating parameters.
+     *  n1=9  max heating dots (default)
+     *  n2=60 heat time per dot row (10µs units). Default ~80 → 800µs; 60 → 600µs
+     *        means the motor can advance ~25% faster with barely-visible lightening.
+     *  n3=2  heat interval (default, leave alone) */
+    printFaster: b(ESC, 0x37, 9, 60, 2),
     alignLeft:   b(ESC, 0x61, 0x00),
     alignCenter: b(ESC, 0x61, 0x01),
     alignRight:  b(ESC, 0x61, 0x02),
@@ -86,6 +92,7 @@ function divider(): Uint8Array {
 function header(restaurantName: string, subtitle?: string): Uint8Array {
     return concat(
         CMD.init,
+        CMD.printFaster,
         CMD.alignCenter, CMD.boldOn, CMD.sizeWide,
         txt(restaurantName), NL_BYTES,
         CMD.sizeNormal, CMD.boldOff,
@@ -185,6 +192,7 @@ export function buildBill(order: Order, restaurantName: string): Uint8Array {
             ? [txt(`Table: ${order.tableNumber}`), NL_BYTES]
             : []),
         txt(`Time:  ${time}`), NL_BYTES,
+        ...(order.customerPhone ? [txt(`Phone: ${order.customerPhone}`), NL_BYTES] : []),
         divider(),
         ...lines,
         divider(),
@@ -229,7 +237,7 @@ export function buildBillFromTemplate(
     tmpl: BillTemplate,
 ): Uint8Array {
     const out: Uint8Array[] = [];
-    out.push(CMD.init);
+    out.push(CMD.init, CMD.printFaster);
 
     // ── Header ────────────────────────────────────────────────────────────────
     const nameSize = {
@@ -264,6 +272,9 @@ export function buildBillFromTemplate(
     }
     if (tmpl.orderInfo.showCustomerName && order.customerName) {
         out.push(txt(`Name:  ${order.customerName}`), NL_BYTES);
+    }
+    if (tmpl.orderInfo.showCustomerPhone && order.customerPhone) {
+        out.push(txt(`Phone: ${order.customerPhone}`), NL_BYTES);
     }
     out.push(divider());
 
@@ -471,6 +482,10 @@ class BluetoothPrinterClient {
      *  output and partial cuts. The queue ensures one print finishes (every
      *  chunk + the cut) before the next one starts. */
     private writeQueue: Promise<void> = Promise.resolve();
+    /** Set true while connected so gattserverdisconnected triggers auto-reconnect.
+     *  Cleared by disconnect() so intentional disconnects don't loop. */
+    private reconnectEnabled = false;
+    private reconnecting = false;
 
     /** Last successful service+characteristic discovery, kept for diagnostics. */
     private lastDiscovery: { service: string; characteristic: string; properties: string[] } | null = null;
@@ -488,6 +503,10 @@ class BluetoothPrinterClient {
 
     isConnected(): boolean {
         return !!this.server?.connected && !!this.char;
+    }
+
+    isReconnecting(): boolean {
+        return this.reconnecting;
     }
 
     name(): string | null {
@@ -555,11 +574,14 @@ class BluetoothPrinterClient {
                 optionalServices: KNOWN_PRINTER_SERVICES,
             };
         const device = await navigator.bluetooth.requestDevice(requestOptions);
+        this.reconnectEnabled = true;
 
         device.addEventListener('gattserverdisconnected', () => {
             this.server = null;
             this.char = null;
+            this.warmedUp = false;
             this.notify();
+            if (this.reconnectEnabled) this._autoReconnect(device);
         });
 
         // The full "connect + enumerate + pick characteristic" flow is
@@ -691,6 +713,7 @@ class BluetoothPrinterClient {
     }
 
     async disconnect(): Promise<void> {
+        this.reconnectEnabled = false;
         try { this.server?.disconnect(); } catch {}
         this.device = null;
         this.server = null;
@@ -741,6 +764,94 @@ class BluetoothPrinterClient {
         );
     }
 
+    /** Called automatically on gattserverdisconnected. Retries the full
+     *  connect+discover flow with linear backoff. Does not need a user gesture
+     *  because the device is already paired — only requestDevice needs one. */
+    private async _autoReconnect(device: BluetoothDevice): Promise<void> {
+        if (this.reconnecting) return;
+        this.reconnecting = true;
+        console.log('[BluetoothPrinter] Disconnected — auto-reconnecting...');
+
+        const MAX = 6;
+        for (let attempt = 1; attempt <= MAX; attempt++) {
+            if (!this.reconnectEnabled) break;
+
+            await new Promise(r => setTimeout(r, 1000 * attempt)); // 1s, 2s, 3s…
+            if (!this.reconnectEnabled) break;
+
+            try {
+                const server = await this.establishChannelWithRetry(device);
+
+                // Strategy 1: cat-printer
+                let writable: BluetoothRemoteGATTCharacteristic | null = null;
+                let writableSvcUuid = '';
+                let detectedProtocol: PrinterProtocol = 'escpos';
+
+                try {
+                    const catSvc = await server.getPrimaryService(CAT_PRINT_SRV);
+                    const tx = await catSvc.getCharacteristic(CAT_PRINT_TX);
+                    for (const rxUuid of [CAT_PRINT_RX, CAT_PRINT_RX2, CAT_PRINT_RX3]) {
+                        try {
+                            const rx = await catSvc.getCharacteristic(rxUuid);
+                            if (rx.properties.notify || rx.properties.indicate) await rx.startNotifications();
+                        } catch {}
+                    }
+                    writable = tx;
+                    writableSvcUuid = catSvc.uuid;
+                    detectedProtocol = 'catprinter';
+                } catch {
+                    // Strategy 2: enumerate
+                    const services = await server.getPrimaryServices();
+                    for (const svc of services) {
+                        const chars = await svc.getCharacteristics().catch(() => []);
+                        for (const c of chars) {
+                            if (!writable && c.properties.writeWithoutResponse) {
+                                writable = c; writableSvcUuid = svc.uuid;
+                            }
+                        }
+                    }
+                    if (!writable) {
+                        for (const svc of services) {
+                            const chars = await svc.getCharacteristics().catch(() => []);
+                            for (const c of chars) {
+                                if (c.properties.write) { writable = c; writableSvcUuid = svc.uuid; break; }
+                            }
+                            if (writable) break;
+                        }
+                    }
+                    if (writable) {
+                        detectedProtocol = writableSvcUuid.toLowerCase() === CAT_PRINT_SRV.toLowerCase()
+                            ? 'catprinter' : 'escpos';
+                    }
+                }
+
+                if (!writable) throw new Error('No writable characteristic found');
+
+                this.server = server;
+                this.char = writable;
+                this.protocol = detectedProtocol;
+                this.warmedUp = false;
+                this.lastDiscovery = {
+                    service: writableSvcUuid,
+                    characteristic: writable.uuid,
+                    properties: [
+                        writable.properties.write ? 'write' : '',
+                        writable.properties.writeWithoutResponse ? 'writeWithoutResponse' : '',
+                    ].filter(Boolean),
+                };
+                this.reconnecting = false;
+                console.log('[BluetoothPrinter] Auto-reconnected');
+                this.notify();
+                return;
+            } catch (err) {
+                console.warn(`[BluetoothPrinter] Auto-reconnect ${attempt}/${MAX}:`, err);
+            }
+        }
+
+        this.reconnecting = false;
+        console.warn('[BluetoothPrinter] Auto-reconnect exhausted — press Connect again');
+    }
+
     /** Public entry point — appends to the serial queue so concurrent calls
      *  don't interleave their byte streams. Errors propagate to the caller
      *  but DO NOT poison the queue (next caller still gets to run). */
@@ -767,15 +878,15 @@ class BluetoothPrinterClient {
                 this.warmedUp = true;
             }
             await this.doWrite(job.preamble);
-            await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 30));
             for (let i = 0; i < job.rows.length; i++) {
                 await this.doWrite(job.rows[i]);
                 if (i < job.rows.length - 1) {
-                    await new Promise(r => setTimeout(r, 10));
+                    await new Promise(r => setTimeout(r, 7));
                 }
             }
             await this.doWrite(job.postamble);
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 300));
         });
         this.writeQueue = next.catch(() => {});
         return next;
@@ -815,10 +926,14 @@ class BluetoothPrinterClient {
         return this.write(buildDailyStats(orders, restaurantName));
     }
 
-    /** BLE has a small MTU (often 20-185 bytes). Chunking is mandatory. */
+    /** BLE has a small MTU (often 20-512 bytes). Chunking is mandatory.
+     *  Android BLE 4.2+ typically negotiates 185-512 bytes; 200 bytes keeps
+     *  us well inside that range while halving the number of round-trips vs
+     *  the old 100-byte chunks. writeWithoutResponse is used when available
+     *  because it doesn't stall waiting for an L2CAP ACK. */
     private async doWrite(data: Uint8Array): Promise<void> {
         if (!this.char) throw new Error('Printer is not connected');
-        const CHUNK_SIZE = 100;
+        const CHUNK_SIZE = 200;
         const useNoResponse = this.char.properties.writeWithoutResponse;
         for (let i = 0; i < data.length; i += CHUNK_SIZE) {
             const slice = data.slice(i, i + CHUNK_SIZE);

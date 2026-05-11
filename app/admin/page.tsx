@@ -80,6 +80,7 @@ export default function AdminPage() {
         deleteOrder,
         restaurantName,
         tagline: contextTagline,
+        legalName: contextLegalName,
         updateBranding,
         paymentsEnabled,
         setPaymentsEnabled,
@@ -129,6 +130,29 @@ export default function AdminPage() {
         const onScroll = () => setHeaderScrolled(window.scrollY > 10);
         window.addEventListener('scroll', onScroll, { passive: true });
         return () => window.removeEventListener('scroll', onScroll);
+    }, []);
+
+    // Screen wake lock: keep the display on so Chrome never suspends this tab.
+    // Without this, the screen sleeping on Android/tablet kills SSE and stops
+    // new orders from appearing and auto-print from firing.
+    useEffect(() => {
+        if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
+        let lock: WakeLockSentinel | null = null;
+        let active = true;
+        const acquire = async () => {
+            if (!active) return;
+            try { lock = await navigator.wakeLock.request('screen'); } catch {}
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === 'visible') acquire();
+        };
+        acquire();
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            active = false;
+            document.removeEventListener('visibilitychange', onVisibility);
+            lock?.release().catch(() => {});
+        };
     }, []);
 
     // Category CRUD state
@@ -226,23 +250,21 @@ export default function AdminPage() {
     // Branding — sync initial values from context once loaded
     const [brandingName, setBrandingName] = useState('');
     const [brandingTagline, setBrandingTagline] = useState('');
+    const [brandingLegalName, setBrandingLegalName] = useState('');
     const [brandingSaving, setBrandingSaving] = useState(false);
     const [brandingSaved, setBrandingSaved] = useState(false);
 
-    // Env settings (PhonePe, base URL, admin password)
+    // Env settings (Cashfree, base URL, admin password)
     type EnvFields = {
         ADMIN_PASSWORD: string;
-        PHONEPE_CLIENT_ID: string;
-        PHONEPE_CLIENT_SECRET: string;
-        PHONEPE_CLIENT_VERSION: string;
-        PHONEPE_ENV: string;
-        PHONEPE_MERCHANT_ID: string;
+        CASHFREE_APP_ID: string;
+        CASHFREE_SECRET_KEY: string;
+        CASHFREE_ENV: string;
         NEXT_PUBLIC_BASE_URL: string;
     };
     const [envFields, setEnvFields] = useState<EnvFields>({
-        ADMIN_PASSWORD: '', PHONEPE_CLIENT_ID: '', PHONEPE_CLIENT_SECRET: '',
-        PHONEPE_CLIENT_VERSION: '', PHONEPE_ENV: '', PHONEPE_MERCHANT_ID: '',
-        NEXT_PUBLIC_BASE_URL: '',
+        ADMIN_PASSWORD: '', CASHFREE_APP_ID: '', CASHFREE_SECRET_KEY: '',
+        CASHFREE_ENV: '', NEXT_PUBLIC_BASE_URL: '',
     });
     const [envSaving, setEnvSaving] = useState(false);
     const [envSaved, setEnvSaved] = useState(false);
@@ -253,9 +275,10 @@ export default function AdminPage() {
         if (!brandingInitialized.current && restaurantName) {
             setBrandingName(restaurantName);
             setBrandingTagline(contextTagline);
+            setBrandingLegalName(contextLegalName);
             brandingInitialized.current = true;
         }
-    }, [restaurantName, contextTagline]);
+    }, [restaurantName, contextTagline, contextLegalName]);
 
     // WA logs
     const [waLogs, setWaLogs] = useState<string>('');
@@ -297,11 +320,11 @@ export default function AdminPage() {
     const handleBrandingSave = useCallback(async () => {
         if (!brandingName.trim()) return;
         setBrandingSaving(true);
-        await updateBranding(brandingName.trim(), brandingTagline.trim());
+        await updateBranding(brandingName.trim(), brandingTagline.trim(), brandingLegalName.trim());
         setBrandingSaving(false);
         setBrandingSaved(true);
         setTimeout(() => setBrandingSaved(false), 2000);
-    }, [brandingName, brandingTagline, updateBranding]);
+    }, [brandingName, brandingTagline, brandingLegalName, updateBranding]);
 
     // Data export
     const handleExport = useCallback(async (format: 'json' | 'csv') => {
@@ -1202,8 +1225,8 @@ export default function AdminPage() {
                                     <h3 style={{ marginBottom: 4 }}>Online Payments</h3>
                                     <p style={{ fontSize: '0.875rem', color: '#666', margin: 0 }}>
                                         {paymentsEnabled
-                                            ? 'Customers pay via PhonePe before order is placed.'
-                                            : 'Counter mode — customers place orders directly and pay at the counter. Turn this on after PhonePe registration is complete.'}
+                                            ? 'Customers pay via Cashfree before order is placed.'
+                                            : 'Counter mode — customers place orders directly and pay at the counter. Turn this on after Cashfree registration is complete.'}
                                     </p>
                                 </div>
                                 <button
@@ -1271,6 +1294,21 @@ export default function AdminPage() {
                                     placeholder="Tagline (e.g. 100% Pure Veg)"
                                     style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ddd', fontSize: '1rem', width: '100%' }}
                                 />
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: 4 }}>
+                                        Legal / Registered Business Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={brandingLegalName}
+                                        onChange={e => setBrandingLegalName(e.target.value)}
+                                        placeholder="Exact name on GST / business registration"
+                                        style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ddd', fontSize: '1rem', width: '100%' }}
+                                    />
+                                    <p style={{ fontSize: '0.75rem', color: '#999', margin: '4px 0 0' }}>
+                                        Required by Cashfree for compliance. Not shown to customers.
+                                    </p>
+                                </div>
                                 <button
                                     className={styles.waConnectBtn}
                                     onClick={handleBrandingSave}
@@ -1298,18 +1336,16 @@ export default function AdminPage() {
                                 </button>
                             </div>
                             <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: 8 }}>
-                                PhonePe credentials, admin password, and base URL. Saved to <code>.env.local</code> on disk.
+                                Cashfree credentials, admin password, and base URL. Saved to <code>.env.local</code> on disk.
                             </p>
                             {envOpen && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
                                     {([
                                         { key: 'ADMIN_PASSWORD', label: 'Admin Password', type: 'password' },
                                         { key: 'NEXT_PUBLIC_BASE_URL', label: 'App Base URL', type: 'text' },
-                                        { key: 'PHONEPE_CLIENT_ID', label: 'PhonePe Client ID', type: 'text' },
-                                        { key: 'PHONEPE_CLIENT_SECRET', label: 'PhonePe Client Secret', type: 'password' },
-                                        { key: 'PHONEPE_CLIENT_VERSION', label: 'PhonePe Client Version', type: 'text' },
-                                        { key: 'PHONEPE_MERCHANT_ID', label: 'PhonePe Merchant ID', type: 'text' },
-                                        { key: 'PHONEPE_ENV', label: 'PhonePe Env (sandbox / production)', type: 'text' },
+                                        { key: 'CASHFREE_APP_ID', label: 'Cashfree App ID', type: 'text' },
+                                        { key: 'CASHFREE_SECRET_KEY', label: 'Cashfree Secret Key', type: 'password' },
+                                        { key: 'CASHFREE_ENV', label: 'Cashfree Env (sandbox / production)', type: 'text' },
                                     ] as { key: keyof EnvFields; label: string; type: string }[]).map(({ key, label, type }) => (
                                         <div key={key}>
                                             <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: 4 }}>{label}</label>

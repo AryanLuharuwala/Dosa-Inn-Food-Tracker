@@ -100,8 +100,10 @@ const BYTES_PER_ROW = PAPER_WIDTH / 8;  // 48
 // to an SC03h-class printer. Cat-printer SDK uses different defaults
 // (speed 32, energy 24000, applyEnergy 1) which resulted in blank output
 // on this firmware. These captured values are what produces ink.
-const DEFAULT_SPEED = 30;         // 0x1E in Wireshark dump
-const DEFAULT_ENERGY = 12000;     // 0x2EE0 in Wireshark dump
+// Speed raised from 30→34 (faster motor). Energy raised from 12000→13500 to
+// keep print darkness consistent at the higher speed (more heat per dot row).
+const DEFAULT_SPEED = 34;         // 0x22 — ~13% faster motor vs captured 0x1E
+const DEFAULT_ENERGY = 13500;     // 0x34BC — compensates for shorter dwell time
 const FINISH_FEED_LINES = 48;     // dump fed 0x0030 = 48 lines twice
 
 const LATTICE_START = new Uint8Array([0xaa, 0x55, 0x17, 0x38, 0x44, 0x5f, 0x5f, 0x5f, 0x44, 0x38, 0x2c]);

@@ -109,7 +109,7 @@ function PaymentResultPageInner() {
         }
 
         async function checkStatus(attempt = 0): Promise<void> {
-            const res = await fetch(`/api/phonepe/status?orderId=${encodeURIComponent(merchantOrderId)}`);
+            const res = await fetch(`/api/cashfree/status?orderId=${encodeURIComponent(merchantOrderId)}`);
             const data = await res.json();
             console.log('[payment-result] status response:', data);
 
