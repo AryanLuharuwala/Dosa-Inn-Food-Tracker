@@ -8,34 +8,48 @@ import { useMenu } from '@/lib/menuContext';
 import LeafLoader from '@/components/LeafLoader';
 import styles from './page.module.css';
 
-// Generate arrival time slots (15-min intervals, next 2 hours only)
-function generateTimeSlots(): string[] {
-    const slots: string[] = [];
+type TimeSlot = { value: string; tomorrow: boolean };
+
+// Generate arrival time slots (15-min intervals). If the current time is past
+// today's window (or within the prep-time buffer of closing), roll over to
+// tomorrow's opening so the user never sees "We're Closed".
+function generateTimeSlots(): TimeSlot[] {
+    const slots: TimeSlot[] = [];
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    // Operating hours: 10 AM to 10 PM (22:00)
-    const openTime = 10 * 60;
-    const closeTime = 22 * 60;
+    // Operating hours: 7 AM to 11 PM
+    const openTime = 7 * 60;
+    const closeTime = 23 * 60;
+    const PREP_BUFFER_MIN = 20;
+    const WINDOW_MIN = 120;
 
-    // Start from next 15-min slot after 20 min prep time
-    let startMinutes = currentMinutes + 20;
-    startMinutes = Math.ceil(startMinutes / 15) * 15;
+    // Start from next 15-min slot after prep time
+    let startMinutes = Math.ceil((currentMinutes + PREP_BUFFER_MIN) / 15) * 15;
+    let tomorrow = false;
 
+    // Before opening today → start at today's opening
     if (startMinutes < openTime) {
         startMinutes = openTime;
     }
 
-    // End time: 2 hours from now (or closing)
-    const maxEndMinutes = currentMinutes + 120;
-    const endMinutes = Math.min(maxEndMinutes, closeTime - 15);
+    // Past today's latest viable slot → roll over to tomorrow's opening
+    if (startMinutes > closeTime - 15) {
+        startMinutes = openTime;
+        tomorrow = true;
+    }
+
+    const endMinutes = tomorrow
+        ? Math.min(startMinutes + WINDOW_MIN, closeTime - 15)
+        : Math.min(currentMinutes + WINDOW_MIN, closeTime - 15);
 
     for (let mins = startMinutes; mins <= endMinutes; mins += 15) {
         const hours = Math.floor(mins / 60);
         const minutes = mins % 60;
         const ampm = hours >= 12 ? 'PM' : 'AM';
         const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
-        slots.push(`${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`);
+        const label = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+        slots.push({ value: label, tomorrow });
     }
 
     return slots;
@@ -52,7 +66,7 @@ export default function PreorderPage() {
     const [errors, setErrors] = useState<{ name?: string; phone?: string; time?: string }>({});
 
     const timeSlots = useMemo(() => generateTimeSlots(), []);
-    const isAfterHours = timeSlots.length === 0;
+    const allTomorrow = timeSlots.length > 0 && timeSlots.every(s => s.tomorrow);
 
     const validateForm = () => {
         const newErrors: { name?: string; phone?: string; time?: string } = {};
@@ -121,17 +135,7 @@ export default function PreorderPage() {
                         <p className={styles.subtitle}>Order ahead, pick up when ready!</p>
                     </div>
 
-                    {isAfterHours ? (
-                        <div className={styles.closedMessage}>
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M12 6v6l4 2" />
-                            </svg>
-                            <h2>We're Closed</h2>
-                            <p>Available from 10 AM to 10 PM</p>
-                            <Link href="/" className={styles.backHomeBtn}>Back to Home</Link>
-                        </div>
-                    ) : (
+                    {(
                         <>
                             {/* Name Input */}
                             <div className={styles.inputGroup}>
@@ -179,21 +183,27 @@ export default function PreorderPage() {
 
                             {/* Time Slots */}
                             <div className={styles.inputGroup}>
-                                <label className={styles.label}>Arrival Time (next 2 hours)</label>
+                                <label className={styles.label}>
+                                    Arrival Time {allTomorrow ? '(tomorrow)' : '(next 2 hours)'}
+                                </label>
                                 {errors.time && <p className={styles.errorText}>{errors.time}</p>}
                                 <div className={styles.timeGrid}>
-                                    {timeSlots.map((slot) => (
-                                        <button
-                                            key={slot}
-                                            className={`${styles.timeSlot} ${selectedTime === slot ? styles.timeSlotSelected : ''}`}
-                                            onClick={() => {
-                                                setSelectedTime(slot);
-                                                if (errors.time) setErrors(prev => ({ ...prev, time: undefined }));
-                                            }}
-                                        >
-                                            {slot}
-                                        </button>
-                                    ))}
+                                    {timeSlots.map((slot) => {
+                                        const fullLabel = slot.tomorrow ? `Tomorrow ${slot.value}` : slot.value;
+                                        return (
+                                            <button
+                                                key={fullLabel}
+                                                className={`${styles.timeSlot} ${selectedTime === fullLabel ? styles.timeSlotSelected : ''}`}
+                                                onClick={() => {
+                                                    setSelectedTime(fullLabel);
+                                                    if (errors.time) setErrors(prev => ({ ...prev, time: undefined }));
+                                                }}
+                                            >
+                                                {slot.value}
+                                                {slot.tomorrow && <span style={{ display: 'block', fontSize: '0.65rem', opacity: 0.7, marginTop: 2 }}>tomorrow</span>}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </>
@@ -202,14 +212,14 @@ export default function PreorderPage() {
 
                 {/* CTA */}
                 <div className={styles.ctaWrapper}>
-                    <button className={styles.ctaBtn} onClick={handleContinue} disabled={isAfterHours}>
+                    <button className={styles.ctaBtn} onClick={handleContinue}>
                         Start Ordering
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                     </button>
-                    {isAfterHours && (
-                        <p className={styles.closedNote}>Takeaway orders open 10 AM – 10 PM</p>
+                    {allTomorrow && (
+                        <p className={styles.closedNote}>We&apos;re wrapping up for today — book a slot for tomorrow morning.</p>
                     )}
                 </div>
             </div>
