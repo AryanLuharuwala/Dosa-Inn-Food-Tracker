@@ -10,7 +10,7 @@ const ADMIN_PASSWORD = 'rocky123'; // Simple password for demo - in production u
 
 export default function LandingPage() {
   const router = useRouter();
-  const { restaurantName, tagline } = useMenu();
+  const { restaurantName, tagline, legalName } = useMenu();
   const [showLoader, setShowLoader] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -170,6 +170,29 @@ export default function LandingPage() {
           </button>
           <p className={styles.ctaSubtext}>Scan. Order. Eat. Repeat.</p>
         </div>
+
+        {/* Legal footer — sits inside .container (position:relative) so absolute bottom works */}
+        <footer style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: '12px 24px',
+          textAlign: 'center',
+          fontSize: '0.72rem',
+          color: 'rgba(255,255,255,0.45)',
+          letterSpacing: '0.02em',
+        }}>
+          {(legalName || restaurantName) && (
+            <span itemScope itemType="https://schema.org/FoodEstablishment">
+              <span itemProp="legalName">{legalName || restaurantName}</span>
+              {' · '}
+            </span>
+          )}
+          <a href="/about" style={{ color: 'inherit', textDecoration: 'underline' }}>
+            About &amp; Policies
+          </a>
+        </footer>
       </div>
     </>
   );
