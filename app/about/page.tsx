@@ -2,6 +2,9 @@ import { getSettings } from '@/lib/localDb';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+// Never statically pre-render — MONGO_URL is only available at runtime
+export const dynamic = 'force-dynamic';
+
 export async function generateMetadata(): Promise<Metadata> {
     const s = await getSettings();
     const name = s.legalName || s.restaurantName || 'Restaurant';
