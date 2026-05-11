@@ -146,11 +146,9 @@ export default function PrintDevicesPage() {
 
             {error && <div className={styles.error}>{error}</div>}
 
-            <div style={{ margin: '12px 0 24px' }}>
-                <EspConfigurator />
-            </div>
-
-            {/* One-time token display */}
+            {/* One-time token display — appears BEFORE the configurator so the
+                user can click "Send to ESP" and scroll right into a pre-filled
+                configurator. */}
             {newToken && (
                 <div className={styles.tokenBanner}>
                     <strong>Token for "{newToken.label}" — copy now, it will not be shown again.</strong>
@@ -163,11 +161,40 @@ export default function PrintDevicesPage() {
                             Copy
                         </button>
                     </div>
-                    <button className={styles.dismissBtn} onClick={() => setNewToken(null)}>
-                        I've copied it — dismiss
-                    </button>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                        <button
+                            onClick={() => {
+                                document.getElementById('esp-configurator')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                            style={{
+                                padding: '8px 16px',
+                                background: '#14b8a6',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: 6,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            📡 Send to ESP via Bluetooth
+                        </button>
+                        <button className={styles.dismissBtn} onClick={() => setNewToken(null)}>
+                            I've copied it — dismiss
+                        </button>
+                    </div>
                 </div>
             )}
+
+            <div style={{ margin: '12px 0 24px' }}>
+                {/* `key` forces a fresh mount when newToken changes so the
+                    configurator's internal `values` state picks up the new
+                    prefill (device id + token). */}
+                <EspConfigurator
+                    key={newToken?.token ?? 'default'}
+                    prefill={newToken ? { device_id: newToken.label, device_token: newToken.token } : undefined}
+                    highlight={!!newToken}
+                />
+            </div>
 
             {/* Create form */}
             <section className={styles.section}>

@@ -8,6 +8,7 @@ import PricingTable from '@/components/pricing/PricingTable';
 import PrinterPanel from '@/components/printer/PrinterPanel';
 import PrinterHeaderButton from '@/components/printer/PrinterHeaderButton';
 import { usePrinter } from '@/components/printer/usePrinter';
+import { useEspPrinterStatus } from '@/components/printer/useEspPrinterStatus';
 import styles from './page.module.css';
 
 // List of available menu images (from /public/menu-images/)
@@ -95,6 +96,11 @@ export default function AdminPage() {
     // Bluetooth printer — connection state lives in the singleton client, this
     // hook just subscribes to changes and exposes printKOT/printBill.
     const printer = usePrinter();
+    // ESP32 bridge online status — any registered device with last_seen < 60s.
+    const esp = useEspPrinterStatus();
+    // "Print is possible" if EITHER path is up. Print buttons show whenever
+    // this is true; routing inside handlePrint* decides which path to use.
+    const printAvailable = printer.isConnected || esp.online;
     const [printingId, setPrintingId] = useState<string | null>(null);
     /** Loops over the configured copy count; each call awaits the previous so
      *  the queue inside the printer client serializes BLE writes. */
@@ -390,14 +396,25 @@ export default function AdminPage() {
         });
         if (newOrders.length > 0) {
             bellRef.current?.play().catch(() => {});
-            if (autoPrintOrders && printer.isConnected) {
-                // Fire and forget — printer client serializes writes internally
-                // so multiple new orders won't fight each other on the BLE link.
+            if (autoPrintOrders) {
                 for (const order of newOrders) {
-                    for (let i = 0; i < kotCopies; i++) {
-                        printer.printKOT(order, restaurantName).catch(err => {
-                            console.warn('[admin] auto-print KOT failed', err);
-                        });
+                    // Always enqueue once on the server — the ESP bridge will
+                    // pick it up via long-poll regardless of whether this tab
+                    // is paired over BLE.
+                    fetch('/api/print/jobs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orderId: order.orderId, kind: 'kot' }),
+                    }).catch(() => {});
+                    // Also fire over BLE if this tab is paired — gives same-room
+                    // printer the fastest path. The BLE client serializes writes
+                    // internally so kotCopies don't race.
+                    if (printer.isConnected) {
+                        for (let i = 0; i < kotCopies; i++) {
+                            printer.printKOT(order, restaurantName).catch(err => {
+                                console.warn('[admin] auto-print KOT failed', err);
+                            });
+                        }
                     }
                 }
             }
@@ -925,14 +942,14 @@ export default function AdminPage() {
                                             <div className={styles.orderFooter}>
                                                 <span className={styles.orderTotal}>₹{order.totalAmount}</span>
                                                 <div className={styles.statusButtons}>
-                                                    {printer.isConnected && (
+                                                    {printAvailable && (
                                                         <>
                                                             <button
                                                                 className={styles.statusBtn}
                                                                 style={{ background: '#374151' }}
                                                                 onClick={() => handlePrintKOT(order)}
                                                                 disabled={printingId === order.orderId}
-                                                                title="Print Kitchen Order Ticket"
+                                                                title={printer.isConnected ? 'Print Kitchen Order Ticket (BLE + ESP)' : 'Print Kitchen Order Ticket (via ESP)'}
                                                             >
                                                                 {printingId === order.orderId ? '…' : '🖨 KOT'}
                                                             </button>
@@ -941,7 +958,7 @@ export default function AdminPage() {
                                                                 style={{ background: '#6b7280' }}
                                                                 onClick={() => handlePrintBill(order)}
                                                                 disabled={printingId === order.orderId}
-                                                                title="Print Bill"
+                                                                title={printer.isConnected ? 'Print Bill (BLE + ESP)' : 'Print Bill (via ESP)'}
                                                             >
                                                                 {printingId === order.orderId ? '…' : '🖨 Bill'}
                                                             </button>

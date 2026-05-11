@@ -38,14 +38,23 @@ interface Status {
     hasToken?: boolean;
 }
 
-export default function EspConfigurator() {
+export interface EspConfiguratorProps {
+    /** Initial values to pre-fill the form (e.g. when a device was just
+     *  created and we know its label + token). Re-rendering with a new
+     *  prefill object resets the form via the parent's `key` prop. */
+    prefill?: Record<string, string>;
+    /** Highlight the section (e.g. when scrolled to it after creating a device). */
+    highlight?: boolean;
+}
+
+export default function EspConfigurator({ prefill, highlight }: EspConfiguratorProps = {}) {
     const [device, setDevice] = useState<BluetoothDevice | null>(null);
     const [server, setServer] = useState<BluetoothRemoteGATTServer | null>(null);
     const [chars, setChars] = useState<{ status?: BluetoothRemoteGATTCharacteristic; write?: BluetoothRemoteGATTCharacteristic; apply?: BluetoothRemoteGATTCharacteristic }>({});
     const [status, setStatus] = useState<Status | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [values, setValues] = useState<Record<string, string>>({});
+    const [values, setValues] = useState<Record<string, string>>(prefill ?? {});
 
     const supported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
 
@@ -110,13 +119,13 @@ export default function EspConfigurator() {
         }
     };
 
-    const onApply = async (cmd: 'reboot' | 'wifi') => {
+    const onApply = async (cmd: 'reboot' | 'wifi' | 'wipe') => {
         if (!chars.apply) return;
         setBusy(true); setError(null);
         try {
             await chars.apply.writeValueWithResponse(new TextEncoder().encode(cmd));
-            if (cmd === 'reboot') {
-                // Device will disconnect us
+            if (cmd === 'reboot' || cmd === 'wipe') {
+                // Device will disconnect us as it reboots
                 setTimeout(onDisconnect, 1500);
             }
         } catch (e) {
@@ -135,8 +144,22 @@ export default function EspConfigurator() {
     }
 
     return (
-        <section style={{ padding: 16, background: '#f0fdfa', border: '1px solid #14b8a6', borderRadius: 8 }}>
+        <section
+            id="esp-configurator"
+            style={{
+                padding: 16,
+                background: highlight ? '#fef9c3' : '#f0fdfa',
+                border: highlight ? '2px solid #eab308' : '1px solid #14b8a6',
+                borderRadius: 8,
+                transition: 'background 200ms, border 200ms',
+            }}
+        >
             <h2 style={{ marginTop: 0 }}>Configure ESP via Bluetooth</h2>
+            {highlight && (
+                <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#854d0e' }}>
+                    Token pre-filled below — click "Search & Connect to ESP", then "Save fields", then "Reboot ESP".
+                </p>
+            )}
             <p style={{ fontSize: 13, color: '#475569' }}>
                 Use this to provision a new ESP32 printer bridge or change its WiFi / server / token.
                 Power on the ESP within range and click "Search & Connect" — Chrome will show a picker.
@@ -193,7 +216,7 @@ export default function EspConfigurator() {
                         ))}
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                         <button onClick={onSaveAll} disabled={busy} style={{
                             padding: '10px 16px', background: '#0f766e', color: 'white',
                             border: 'none', borderRadius: 6, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
@@ -206,6 +229,21 @@ export default function EspConfigurator() {
                             padding: '10px 16px', background: '#ea580c', color: 'white',
                             border: 'none', borderRadius: 6, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
                         }}>Reboot ESP</button>
+                        <button
+                            onClick={() => {
+                                if (!confirm('Wipe ALL stored config on this ESP? It will reboot and use the compiled-in defaults.')) return;
+                                onApply('wipe');
+                            }}
+                            disabled={busy}
+                            style={{
+                                padding: '10px 16px', background: '#7f1d1d', color: 'white',
+                                border: 'none', borderRadius: 6, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
+                                marginLeft: 'auto',
+                            }}
+                            title="Clear NVS so the ESP uses the firmware's compiled-in defaults on next boot"
+                        >
+                            ⚠ Wipe NVS
+                        </button>
                     </div>
                 </>
             )}

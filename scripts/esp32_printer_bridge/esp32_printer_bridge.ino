@@ -30,7 +30,7 @@ static const char* DEF_WIFI_PASSWORD = "$tandard4B";
 
 static const char* DEF_SERVER_BASE  = "http://pollys.food";
 static const char* DEF_DEVICE_ID    = "printer";
-static const char* DEF_DEVICE_TOKEN = "8spDDEJSe1bMU9OrTkkBLY6IgQlLgbXWL7AOpnXZE3A";
+static const char* DEF_DEVICE_TOKEN = "mrIBbGn8F5dQsefI-A1dSjSavYz1uzkuarkBD6SENhY";
 
 // Live, in-RAM config (loaded from NVS at boot). All read paths use these.
 static String gWifiSsid, gWifiIdentity, gWifiUsername, gWifiPassword;
@@ -525,6 +525,16 @@ class CfgApplyCB : public NimBLECharacteristicCallbacks {
             loadConfig();
             connectWifi();
             publishStatus();
+        } else if (cmd == "wipe") {
+            // Factory reset: clear all NVS keys so the next boot uses the
+            // compiled-in DEF_* defaults. Useful when reflashing with new
+            // defaults but NVS still has the old values.
+            Serial.println("BLE-cfg: WIPING NVS — reboot in 1s");
+            gPrefs.begin(NVS_NS, false);
+            gPrefs.clear();
+            gPrefs.end();
+            delay(1000);
+            ESP.restart();
         }
     }
 };

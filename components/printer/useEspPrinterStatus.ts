@@ -17,8 +17,11 @@ export interface EspPrinterStatus {
     lastSeenMs: number | null;
 }
 
-const ONLINE_THRESHOLD_MS = 60_000;
-const POLL_INTERVAL_MS    = 15_000;
+// Long-poll cycle is ~30s on the ESP, plus DB write latency + UI poll latency.
+// 120s threshold means we forgive 1 missed cycle before flipping to offline,
+// 5s UI poll keeps the indicator fresh.
+const ONLINE_THRESHOLD_MS = 120_000;
+const POLL_INTERVAL_MS    = 5_000;
 
 interface DeviceRow {
     id: string;
