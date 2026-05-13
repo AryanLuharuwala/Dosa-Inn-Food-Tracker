@@ -23,12 +23,12 @@
 // these if the NVS slot is empty. After BLE-config writes new values, they
 // persist to NVS and survive reboots.
 
-static const char* DEF_WIFI_SSID     = "GUEST_SECURED";
-static const char* DEF_WIFI_IDENTITY = "21MI31032";       // empty for plain WPA2
-static const char* DEF_WIFI_USERNAME = "21MI31032";
-static const char* DEF_WIFI_PASSWORD = "$tandard4B";
+static const char* DEF_WIFI_SSID     = "boom";
+static const char* DEF_WIFI_IDENTITY = "";       // empty for plain WPA2
+static const char* DEF_WIFI_USERNAME = "boom";
+static const char* DEF_WIFI_PASSWORD = "boombaam";
 
-static const char* DEF_SERVER_BASE  = "http://pollys.food";
+static const char* DEF_SERVER_BASE  = "https://pollys.food";
 static const char* DEF_DEVICE_ID    = "printer";
 static const char* DEF_DEVICE_TOKEN = "mrIBbGn8F5dQsefI-A1dSjSavYz1uzkuarkBD6SENhY";
 
@@ -53,6 +53,18 @@ static void loadConfig() {
     gDeviceId     = gPrefs.getString("device_id",     DEF_DEVICE_ID);
     gDeviceToken  = gPrefs.getString("device_token",  DEF_DEVICE_TOKEN);
     gPrefs.end();
+
+    // Migration: pollys.food is HTTPS-only on Vercel — silently upgrade any
+    // stale http:// URL stored in NVS so the device self-heals after a re-flash
+    // without needing manual re-provisioning over BLE.
+    if (gServerBase.startsWith("http://")) {
+        gServerBase = "https://" + gServerBase.substring(7);
+        gPrefs.begin(NVS_NS, false /*rw*/);
+        gPrefs.putString("server_base", gServerBase);
+        gPrefs.end();
+        Serial.printf("cfg: migrated server URL to %s\n", gServerBase.c_str());
+    }
+
     Serial.printf("cfg: ssid=%s server=%s id=%s tokenLen=%u\n",
         gWifiSsid.c_str(), gServerBase.c_str(), gDeviceId.c_str(),
         (unsigned)gDeviceToken.length());
