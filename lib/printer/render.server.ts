@@ -10,15 +10,45 @@ import { PAPER_WIDTH, BYTES_PER_ROW } from './types';
 // regular and bold requests — there's no true bold weight, but the text
 // renders rather than tofuing out.
 const FONT_FAMILY = 'PrintFont';
-const FONT_PATH   = path.join(process.cwd(), 'lib', 'printer', 'fonts', 'NotoSans-Regular.ttf');
+
+/** Resolve the bundled TTF. On Vercel's standalone build, cwd is
+ *  ".next/standalone" and the file is copied to the same lib/printer/fonts
+ *  path under that root (thanks to outputFileTracingIncludes in next.config).
+ *  Try a couple of locations so this also works in `next dev`. */
+function findFontPath(): string | null {
+    const candidates = [
+        path.join(process.cwd(), 'lib', 'printer', 'fonts', 'NotoSans-Regular.ttf'),
+        path.join(process.cwd(), '.next', 'standalone', 'lib', 'printer', 'fonts', 'NotoSans-Regular.ttf'),
+        // When this file is bundled, __dirname points into .next; resolve up to repo root
+        path.resolve(__dirname, '..', '..', 'lib', 'printer', 'fonts', 'NotoSans-Regular.ttf'),
+    ];
+    for (const p of candidates) {
+        try { if (fs.existsSync(p)) return p; } catch { /* ignore */ }
+    }
+    return null;
+}
+
 let fontRegistered = false;
+let fontLoggedMissing = false;
 async function ensureFontRegistered() {
     if (fontRegistered) return;
-    if (!fs.existsSync(FONT_PATH)) return;
-    const { registerFont } = await import('canvas');
-    registerFont(FONT_PATH, { family: FONT_FAMILY, weight: 'normal' });
-    registerFont(FONT_PATH, { family: FONT_FAMILY, weight: 'bold' });
-    fontRegistered = true;
+    const fontPath = findFontPath();
+    if (!fontPath) {
+        if (!fontLoggedMissing) {
+            console.error('[print] FONT MISSING — receipts will render as tofu. cwd=' + process.cwd());
+            fontLoggedMissing = true;
+        }
+        return;
+    }
+    try {
+        const { registerFont } = await import('canvas');
+        registerFont(fontPath, { family: FONT_FAMILY, weight: 'normal' });
+        registerFont(fontPath, { family: FONT_FAMILY, weight: 'bold' });
+        fontRegistered = true;
+        console.log('[print] font registered from ' + fontPath);
+    } catch (err) {
+        console.error('[print] registerFont failed:', err);
+    }
 }
 
 type TextSize = 'normal' | 'large' | 'huge' | undefined;
