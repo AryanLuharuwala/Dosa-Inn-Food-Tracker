@@ -3,12 +3,30 @@ import path from 'path';
 import type { DocLine } from './types';
 import { PAPER_WIDTH, BYTES_PER_ROW } from './types';
 
+// Vercel's serverless runtime has no system fonts installed, so node-canvas
+// renders missing-glyph boxes (the "tofu" □□□ pattern) for every character
+// unless we register a TTF ourselves. Bundle Noto Sans Latin (~28 KB) in the
+// repo and register it once at module load. The same file is used for both
+// regular and bold requests — there's no true bold weight, but the text
+// renders rather than tofuing out.
+const FONT_FAMILY = 'PrintFont';
+const FONT_PATH   = path.join(process.cwd(), 'lib', 'printer', 'fonts', 'NotoSans-Regular.ttf');
+let fontRegistered = false;
+async function ensureFontRegistered() {
+    if (fontRegistered) return;
+    if (!fs.existsSync(FONT_PATH)) return;
+    const { registerFont } = await import('canvas');
+    registerFont(FONT_PATH, { family: FONT_FAMILY, weight: 'normal' });
+    registerFont(FONT_PATH, { family: FONT_FAMILY, weight: 'bold' });
+    fontRegistered = true;
+}
+
 type TextSize = 'normal' | 'large' | 'huge' | undefined;
 const sizePx  = (s: TextSize) => s === 'huge' ? 48 : s === 'large' ? 32 : 22;
 const lineH   = (s: TextSize) => s === 'huge' ? 56 : s === 'large' ? 38 : 28;
 
 function font(bold: boolean | undefined, s: TextSize) {
-    return `${bold ? 'bold ' : ''}${sizePx(s)}px sans-serif`;
+    return `${bold ? 'bold ' : ''}${sizePx(s)}px "${FONT_FAMILY}", sans-serif`;
 }
 
 // Resolve a src string to a Buffer for loadImage.
@@ -82,6 +100,7 @@ function imageDataToBitmap(
  *  Server-only — never call from browser code. */
 export async function renderDocServer(doc: DocLine[]): Promise<{ data: Buffer; width: number; height: number }> {
     const { createCanvas, loadImage } = await import('canvas');
+    await ensureFontRegistered();
 
     // First pass: measure
     const measure = createCanvas(PAPER_WIDTH, 1);
