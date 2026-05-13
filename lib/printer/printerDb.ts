@@ -48,7 +48,14 @@ export interface PrintJob {
 
 export async function listDevices(): Promise<PrintDevice[]> {
     const db = await getDb();
-    return db.collection<PrintDevice>('print_devices').find({}).sort({ created_at: -1 }).toArray();
+    // Cosmos DB Mongo API rejects unindexed .sort() with HTTP 400. Pull all
+    // rows (devices are few-by-design) and sort in JS instead.
+    const all = await db.collection<PrintDevice>('print_devices').find({}).toArray();
+    return all.sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta; // newest first
+    });
 }
 
 export async function findDeviceByRawToken(token: string): Promise<PrintDevice | null> {
@@ -136,13 +143,18 @@ export interface PrintJobSummary {
 export async function listJobs(): Promise<PrintJobSummary[]> {
     const db = await getDb();
     const freshCutoff = new Date(Date.now() - JOB_MAX_AGE_MS);
-    return db.collection<PrintJob>('print_jobs')
+    // Cosmos rejects unindexed sort; pull then sort in JS (queue size is small).
+    const rows = await db.collection<PrintJob>('print_jobs')
         .find(
-            { created_at: { $gte: freshCutoff } },     // hide stale jobs
+            { created_at: { $gte: freshCutoff } },
             { projection: { payload: 0 } } as { projection: Record<string, 0 | 1> },
         )
-        .sort({ created_at: 1 })
         .toArray() as unknown as PrintJobSummary[];
+    return rows.sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return ta - tb; // oldest first (queue order)
+    });
 }
 
 export async function deleteJob(id: string): Promise<boolean> {
@@ -190,26 +202,45 @@ export async function claimNextJob(deviceId: string): Promise<PrintJob | null> {
         settings.role === 'all' ? {} :
         { kind: settings.role };
 
-    const result = await db.collection<PrintJob>('print_jobs').findOneAndUpdate(
-        { $and: [
-            kindFilter,
-            { created_at: { $gte: freshCutoff } }, // skip stale jobs
-            { $or: [
-                { status: 'queued',   visible_after: { $lte: now } },
-                { status: 'inflight', visible_after: { $lte: now }, attempts: { $lt: 3 } },
-            ] },
+    // Cosmos rejects findOneAndUpdate with sort on an unindexed field. Two-step:
+    // 1. find eligible jobs, sort in JS, pick the oldest
+    // 2. atomic claim by id (this is still race-safe because the update only
+    //    matches if the job is still in the eligible state)
+    // Loose typing here because Mongo's Filter<T> is overly strict about
+    // literal-union fields under $or — the runtime accepts these fine.
+    const filter: Record<string, unknown> = { $and: [
+        kindFilter,
+        { created_at: { $gte: freshCutoff } },
+        { $or: [
+            { status: 'queued',   visible_after: { $lte: now } },
+            { status: 'inflight', visible_after: { $lte: now }, attempts: { $lt: 3 } },
         ] },
-        {
-            $set: {
-                status: 'inflight',
-                device_id: deviceId,
-                visible_after: visibleAfter,
+    ] };
+    const col = db.collection<PrintJob>('print_jobs');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const candidates = await col.find(filter as any).toArray();
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    for (const candidate of candidates) {
+        // Atomic claim — only succeeds if no one else has changed its state
+        // since we read it. Loop covers the race where another device claimed
+        // the oldest before us.
+        const claimed = await db.collection<PrintJob>('print_jobs').findOneAndUpdate(
+            { id: candidate.id, status: candidate.status, attempts: candidate.attempts },
+            {
+                $set: {
+                    status: 'inflight',
+                    device_id: deviceId,
+                    visible_after: visibleAfter,
+                },
+                $inc: { attempts: 1 },
             },
-            $inc: { attempts: 1 },
-        },
-        { sort: { created_at: 1 }, returnDocument: 'after' },
-    );
-    return result ?? null;
+            { returnDocument: 'after' },
+        );
+        if (claimed) return claimed;
+    }
+    return null;
 }
 
 /** Acknowledge a job: delete on success, re-queue or dead on error. */
