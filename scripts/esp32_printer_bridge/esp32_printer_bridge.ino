@@ -30,7 +30,7 @@ static const char* DEF_WIFI_PASSWORD = "boombaam";
 
 static const char* DEF_SERVER_BASE  = "https://pollys.food";
 static const char* DEF_DEVICE_ID    = "printer";
-static const char* DEF_DEVICE_TOKEN = "mrIBbGn8F5dQsefI-A1dSjSavYz1uzkuarkBD6SENhY";
+static const char* DEF_DEVICE_TOKEN = "9X-rFxcsCzHqoHtMS3UbIM4gpLyvXSrKpM4G0auw9uQ";
 
 // Live, in-RAM config (loaded from NVS at boot). All read paths use these.
 static String gWifiSsid, gWifiIdentity, gWifiUsername, gWifiPassword;
@@ -335,12 +335,20 @@ static void connectWifi() {
 }
 
 // ─── HTTP / HTTPS ────────────────────────────────────────────────────────────
+// Belt-and-suspenders: even if migration didn't run for some reason, never
+// dial an http:// URL — pollys.food has nothing listening on port 80.
+static String forceHttps(const String& in) {
+    if (in.startsWith("http://"))  return "https://" + in.substring(7);
+    if (in.startsWith("https://")) return in;
+    return String("https://") + in;
+}
+
 static bool isHttps() {
-    return gServerBase.startsWith("https://");
+    return true;  // we force https at the URL-build site below
 }
 
 static int httpGet(const String& path, String& out, uint32_t timeoutMs = 15000) {
-    String url = gServerBase + path;
+    String url = forceHttps(gServerBase) + path;
     HTTPClient http;
     bool began;
     if (isHttps()) {
@@ -368,7 +376,7 @@ static int httpGet(const String& path, String& out, uint32_t timeoutMs = 15000) 
 }
 
 static int httpPostJson(const String& path, const String& body) {
-    String url = gServerBase + path;
+    String url = forceHttps(gServerBase) + path;
     HTTPClient http;
     if (isHttps()) {
         WiFiClientSecure tls; tls.setCACert(TLS_CA_CERT);
