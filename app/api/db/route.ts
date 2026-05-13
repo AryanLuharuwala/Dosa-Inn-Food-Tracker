@@ -17,6 +17,9 @@ import { emit } from '@/lib/serverEvents';
 import { sendWhatsApp, formatOrderMessage } from '@/lib/whatsapp';
 import { isAdminRequest, getVisitorId } from '@/lib/apiAuth';
 import { consumePaymentToken } from '@/lib/paymentTokens';
+import { buildKOTDoc } from '@/lib/printer/receipt';
+import { renderDocServer } from '@/lib/printer/render.server';
+import { enqueuePrintJob } from '@/lib/printer/printerDb';
 
 const ADMIN_ONLY = new Set([
     'menu_update_item', 'menu_add_item', 'menu_delete_item',
@@ -227,7 +230,8 @@ export async function POST(req: NextRequest) {
             // verification and tag the order so staff knows to collect cash.
             // The setting is read fresh each request so flipping the toggle
             // takes effect immediately.
-            const { paymentsEnabled } = await getSettings();
+            const settings = await getSettings();
+            const { paymentsEnabled } = settings;
             if (paymentsEnabled) {
                 if (!paymentToken || !await consumePaymentToken(paymentToken, order.totalAmount)) {
                     // Token already consumed (by another device winning the race) and
@@ -247,6 +251,31 @@ export async function POST(req: NextRequest) {
 
             await appendOrder(order);
             emit('menu', 'orders');
+
+            // Server-side auto-print KOT: triggers regardless of whether any
+            // admin tab is open. The ESP bridge will pick up this job on its
+            // next long-poll. Browser-side auto-print (admin/page.tsx) still
+            // runs in parallel for BLE-paired tabs.
+            //
+            // Skip if the order is older than 1 hour — guards against replaying
+            // old orders (e.g. someone re-syncs a backup) from spitting out
+            // stale KOTs on the kitchen printer.
+            const orderAgeMs = order.timestamp
+                ? Date.now() - new Date(order.timestamp).getTime()
+                : 0;
+            const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+            if (settings.autoPrintOrders && orderAgeMs < STALE_THRESHOLD_MS) {
+                try {
+                    const restaurantName = settings.restaurantName ?? 'Restaurant';
+                    const doc = buildKOTDoc(order, restaurantName);
+                    const { data, width, height } = await renderDocServer(doc);
+                    await enqueuePrintJob(data, width, height, 'kot');
+                } catch (err) {
+                    console.warn('[order_add] auto-enqueue KOT failed:', err);
+                }
+            } else if (settings.autoPrintOrders && orderAgeMs >= STALE_THRESHOLD_MS) {
+                console.log(`[order_add] skipping auto-print: order is ${Math.round(orderAgeMs / 60000)}min old`);
+            }
 
             if (order.customerPhone) {
                 const msg = formatOrderMessage({

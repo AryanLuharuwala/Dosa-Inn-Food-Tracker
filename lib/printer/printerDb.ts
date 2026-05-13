@@ -115,6 +115,11 @@ export async function getDeviceSettings(id: string): Promise<DeviceSettings> {
 
 // ── Jobs ─────────────────────────────────────────────────────────────────────
 
+/** Jobs older than this are skipped both in claimNextJob and listJobs.
+ *  Guards against printing yesterday's tickets when the ESP comes back
+ *  from a long outage. */
+const JOB_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+
 /** Job summary for the admin UI — same as PrintJob but without the bitmap
  *  payload (binary, large, never useful in the UI). */
 export interface PrintJobSummary {
@@ -130,8 +135,12 @@ export interface PrintJobSummary {
 
 export async function listJobs(): Promise<PrintJobSummary[]> {
     const db = await getDb();
+    const freshCutoff = new Date(Date.now() - JOB_MAX_AGE_MS);
     return db.collection<PrintJob>('print_jobs')
-        .find({}, { projection: { payload: 0 } } as { projection: Record<string, 0 | 1> })
+        .find(
+            { created_at: { $gte: freshCutoff } },     // hide stale jobs
+            { projection: { payload: 0 } } as { projection: Record<string, 0 | 1> },
+        )
         .sort({ created_at: 1 })
         .toArray() as unknown as PrintJobSummary[];
 }
@@ -168,16 +177,15 @@ export async function enqueuePrintJob(
 
 /** Pop the next available job into inflight state. Filters by the calling
  *  device's `settings.role` — a 'kot' printer won't pick up bill jobs, etc.
- *  Returns null if no eligible job is available. */
+ *  Also skips jobs older than JOB_MAX_AGE_MS (1 hr). Returns null if no
+ *  eligible job is available. */
 export async function claimNextJob(deviceId: string): Promise<PrintJob | null> {
     const db = await getDb();
     const now = new Date();
     const visibleAfter = new Date(now.getTime() + 60_000);
+    const freshCutoff  = new Date(now.getTime() - JOB_MAX_AGE_MS);
 
     const settings = await getDeviceSettings(deviceId);
-    // role='all' takes anything (including legacy jobs with no kind set).
-    // role='kot'/'bill' only takes matching kind. Jobs missing `kind` are
-    // legacy / test prints — keep them available to role='all' only.
     const kindFilter =
         settings.role === 'all' ? {} :
         { kind: settings.role };
@@ -185,6 +193,7 @@ export async function claimNextJob(deviceId: string): Promise<PrintJob | null> {
     const result = await db.collection<PrintJob>('print_jobs').findOneAndUpdate(
         { $and: [
             kindFilter,
+            { created_at: { $gte: freshCutoff } }, // skip stale jobs
             { $or: [
                 { status: 'queued',   visible_after: { $lte: now } },
                 { status: 'inflight', visible_after: { $lte: now }, attempts: { $lt: 3 } },

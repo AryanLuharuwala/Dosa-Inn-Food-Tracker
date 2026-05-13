@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePrinter } from './usePrinter';
+import { useEspPrinterStatus } from './useEspPrinterStatus';
 
 interface Props {
     restaurantName: string;
@@ -36,6 +37,7 @@ export default function PrinterPanel({
     onPrintStats,
 }: Props) {
     const { isSupported, isConnected, deviceName, diagnostics, connect, connectShowAll, disconnect, printTest } = usePrinter();
+    const esp = useEspPrinterStatus();
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [testStatus, setTestStatus] = useState<'idle' | 'printing' | 'sent'>('idle');
@@ -104,6 +106,43 @@ export default function PrinterPanel({
                     Web Bluetooth isn&apos;t supported in this browser. Use Chrome or Edge on
                     desktop, or Chrome on Android. (iOS Safari does not support Web Bluetooth.)
                 </p>
+                {esp.online && (
+                    <p style={{ fontSize: '0.85rem', color: '#0f766e', marginTop: 8, fontWeight: 600 }}>
+                        ✓ ESP bridge online ({esp.label}). Print buttons & auto-print still work via the server queue.
+                    </p>
+                )}
+                {/* Even without browser BLE, the auto-print toggle is still useful —
+                    it routes through the ESP bridge. */}
+                {typeof autoPrintOrders === 'boolean' && onAutoPrintChange && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: '0.85rem', color: '#444', margin: '0 0 2px 0', fontWeight: 600 }}>
+                                Auto-print incoming orders
+                            </p>
+                            <p style={{ fontSize: '0.75rem', color: '#888', margin: 0 }}>
+                                When ON, every new order is queued as a KOT and the ESP bridge prints it.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={autoPrintOrders}
+                            onClick={() => onAutoPrintChange(!autoPrintOrders)}
+                            style={{
+                                position: 'relative', flexShrink: 0,
+                                width: 48, height: 26, borderRadius: 999, border: 'none', cursor: 'pointer',
+                                background: autoPrintOrders ? 'var(--color-primary, #1a4d2e)' : '#ccc',
+                                transition: 'background 0.2s',
+                            }}
+                        >
+                            <span style={{
+                                position: 'absolute', top: 2, left: autoPrintOrders ? 24 : 2,
+                                width: 22, height: 22, borderRadius: '50%', background: 'white',
+                                transition: 'left 0.2s',
+                            }} />
+                        </button>
+                    </div>
+                )}
             </div>
         );
     }
@@ -236,7 +275,7 @@ export default function PrinterPanel({
                             Auto-print incoming orders
                         </p>
                         <p style={{ fontSize: '0.75rem', color: '#888', margin: 0 }}>
-                            When ON, every new order auto-prints a KOT (uses the KOT copies setting). Requires a connected printer.
+                            When ON, every new order auto-prints a KOT. Routes through whichever printer is online — browser BLE here, or the ESP bridge over the server queue.
                         </p>
                     </div>
                     <button
