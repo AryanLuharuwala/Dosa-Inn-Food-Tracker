@@ -38,10 +38,7 @@ export function useEspPrinterStatus(): EspPrinterStatus {
         const tick = async () => {
             try {
                 const res = await fetch('/api/print/devices');
-                if (!res.ok) {
-                    console.warn('[esp-status] /api/print/devices →', res.status, await res.text().catch(() => ''));
-                    return;
-                }
+                if (!res.ok) return;
                 const devices: DeviceRow[] = await res.json();
                 const active = devices.filter(d => !d.revoked && d.last_seen_at);
                 let bestAgo = Infinity;
@@ -50,22 +47,14 @@ export function useEspPrinterStatus(): EspPrinterStatus {
                     const ago = Date.now() - new Date(d.last_seen_at!).getTime();
                     if (ago < bestAgo) { bestAgo = ago; bestLabel = d.label; }
                 }
-                const newStatus = {
+                if (cancelled) return;
+                setStatus({
                     online: bestAgo < ONLINE_THRESHOLD_MS,
                     label: bestLabel,
                     lastSeenMs: bestAgo === Infinity ? null : bestAgo,
-                };
-                console.log('[esp-status]', {
-                    devices: devices.length,
-                    activeWithLastSeen: active.length,
-                    bestAgoMs: bestAgo === Infinity ? null : bestAgo,
-                    bestLabel,
-                    online: newStatus.online,
                 });
-                if (cancelled) return;
-                setStatus(newStatus);
-            } catch (e) {
-                console.warn('[esp-status] fetch threw:', e);
+            } catch {
+                // network blip — keep previous state silently
             }
         };
         tick();

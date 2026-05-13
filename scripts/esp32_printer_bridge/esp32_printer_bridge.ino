@@ -90,7 +90,6 @@ static void saveConfigField(const char* key, const String& val) {
     gPrefs.begin(NVS_NS, false /*rw*/);
     gPrefs.putString(key, val);
     gPrefs.end();
-    Serial.printf("cfg: saved %s (len=%u)\n", key, (unsigned)val.length());
 }
 
 // DigiCert Global Root G2 — pollys.food's cert chains to this root via
@@ -339,12 +338,8 @@ static uint8_t* gLastBmp    = nullptr;
 static uint16_t gLastHeight = 0;
 
 static void onPowerButtonPressed() {
-    Serial.println("power button — flagging main loop for sleep toggle");
-    // Instant feedback — play "going away" tone right here, the moment the
-    // hold threshold was met. Don't wait for the main loop to service the
-    // flag and call enterSleep (which is async + can be delayed by an
-    // in-flight HTTP poll). The tone is synchronous (~500ms) and runs in
-    // the IO task; nothing else needs to run during it.
+    // Instant feedback — play "going away" tone the moment the hold threshold
+    // is met. Don't wait for the main loop to service the flag.
     beepSleepDown();
     gWantsSleepToggle = true;
 }
@@ -363,41 +358,22 @@ static const uint32_t POWER_HOLD_MS = 400;
 // before fiddling with shared hardware (e.g. arming the GPIO 7 wake source
 // in enterSleep, or playing a synchronous beep that calls tone()).
 static void ioTask(void* arg) {
-    // Hard-reset the buzzer in case LEDC was left in a stuck state by the
-    // previous task instance or by light sleep.
-    Serial.println("[io] task starting — resetting buzzer + state machine");
     noTone(BUZZER_PIN);
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
     setBuzz(BUZZ_OFF);
-    // First second: don't fire press feedback. Lets us silently adopt the
-    // initial pin states without phantom beeping for switches that are
-    // already in the LOW position at task start.
+    // First second: suppress phantom press feedback so switches already in
+    // the LOW position at task start don't beep.
     const uint32_t silentUntil = millis() + 1000;
 
-    uint32_t lastBeat = 0;
     for (;;) {
         if (!gIoTaskPaused) {
-            // Save current buzz mode so we can suppress press-beeps in the
-            // silent window without affecting alarms.
             const BuzzMode preTickMode = gBuzzMode;
             buttonsTick();
             if (millis() < silentUntil && gBuzzMode == BUZZ_PRESS && preTickMode != BUZZ_PRESS) {
-                setBuzz(BUZZ_OFF);   // squash phantom press during settle window
+                setBuzz(BUZZ_OFF);
             }
             buzzerTick();
-        }
-        const uint32_t now = millis();
-        if (now - lastBeat > 3000) {
-            lastBeat = now;
-            Serial.printf("[io] alive paused=%d  pwr=%d  toggles=%d%d%d  buzz=%d\n",
-                          (int)gIoTaskPaused,
-                          digitalRead(BTN_POWER),
-                          digitalRead(BTN_TOGGLES[0]),
-                          digitalRead(BTN_TOGGLES[1]),
-                          digitalRead(BTN_TOGGLES[2]),
-                          (int)gBuzzMode);
-            toggleOnboardLed();
         }
         vTaskDelay(pdMS_TO_TICKS(15));
     }
@@ -419,16 +395,14 @@ static void forceButtonPullups() {
 static TaskHandle_t gIoTaskHandle = NULL;
 
 static void startIoTask() {
-    if (gIoTaskHandle != NULL) return; // already running
+    if (gIoTaskHandle != NULL) return;
     xTaskCreate(ioTask, "io", 4096, NULL, 1, &gIoTaskHandle);
-    Serial.println("[io] task created");
 }
 
 static void stopIoTask() {
     if (gIoTaskHandle == NULL) return;
     vTaskDelete(gIoTaskHandle);
     gIoTaskHandle = NULL;
-    Serial.println("[io] task killed");
 }
 
 static void buttonsInit() {
@@ -458,8 +432,6 @@ static void buttonsTick() {
             lastToggleChange[i] = now;
         }
         initialized = true;
-        Serial.printf("[io] adopted initial toggles: %d%d%d\n",
-                      (int)prevToggle[0], (int)prevToggle[1], (int)prevToggle[2]);
     }
 
     const uint32_t DEBOUNCE_MS = 20;
@@ -470,7 +442,6 @@ static void buttonsTick() {
                 prevToggle[i] = reading;
                 lastToggleChange[i] = now;
                 if (reading) {        // transitioned to LOW = "pressed"
-                    Serial.printf("btn press: GPIO %u\n", BTN_TOGGLES[i]);
                     toggleOnboardLed();
                     onAnyButtonPressed();
                     // Map each toggle button to a specific action. Flag is
@@ -495,21 +466,12 @@ static void buttonsTick() {
     // once after the (re)start of the IO task before any LOW press counts.
     static bool powerArmed = false;
     const bool powerLow = digitalRead(BTN_POWER) == LOW;
-    static bool prevPowerLow = false;
-    if (powerLow != prevPowerLow) {
-        Serial.printf("power pin %s%s\n",
-                      powerLow ? "LOW (pressed)" : "HIGH (released)",
-                      (!powerLow && !powerArmed) ? " → armed" : "");
-        prevPowerLow = powerLow;
-    }
     if (!powerLow) powerArmed = true;     // first HIGH unlocks the trigger
 
     if (powerArmed && powerLow) {
         if (powerLowSince == 0) powerLowSince = millis();
         if (!powerFired && millis() - powerLowSince >= POWER_HOLD_MS) {
             powerFired = true;
-            Serial.printf("power held %lums — triggering\n",
-                          (unsigned long)POWER_HOLD_MS);
             toggleOnboardLed();
             onPowerButtonPressed();
         }
@@ -619,8 +581,6 @@ class ScanCB : public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice* dev) override {
         std::string name = dev->getName();
         if (!gDev && name.find("SC03") != std::string::npos) {
-            Serial.printf("BLE: matched \"%s\" %s\n",
-                name.c_str(), dev->getAddress().toString().c_str());
             gDev = (NimBLEAdvertisedDevice*)dev;
             NimBLEDevice::getScan()->stop();
         }
@@ -629,26 +589,24 @@ class ScanCB : public NimBLEScanCallbacks {
 
 class ClientCB : public NimBLEClientCallbacks {
     void onConnect(NimBLEClient* c) override {
-        Serial.println("BLE: link up");
         gBleConnected = true;
     }
     void onDisconnect(NimBLEClient* c, int reason) override {
         Serial.printf("BLE: link down (reason=%d)\n", reason);
         gBleConnected = false;
         gTx           = nullptr;
-        gDev          = nullptr;             // force re-scan (RPA may rotate)
-        gNextBleRetry = millis() + 2000;     // back off briefly before retry
+        gDev          = nullptr;
+        gNextBleRetry = millis() + 2000;
     }
     void onConnectFail(NimBLEClient* c, int reason) override {
-        Serial.printf("BLE: connect fail reason=%d\n", reason);
+        Serial.printf("BLE: connect fail (%d)\n", reason);
     }
 } gClientCB;
 
 static bool connectPrinter() {
     if (gBleConnected && gTx) return true;
 
-    Serial.println("BLE: scanning 8s...");
-    beepBleScan();    // brief chirp so the user knows we're looking
+    beepBleScan();
     gDev = nullptr;
     auto scan = NimBLEDevice::getScan();
     scan->setScanCallbacks(&gScanCB, false);
@@ -659,7 +617,7 @@ static bool connectPrinter() {
     uint32_t t0 = millis();
     while (!gDev && millis() - t0 < 9000) delay(100);
     scan->stop();
-    if (!gDev) { Serial.println("BLE: no SC03 found"); return false; }
+    if (!gDev) return false;
 
     if (gClient) {
         if (gClient->isConnected()) gClient->disconnect();
@@ -671,32 +629,23 @@ static bool connectPrinter() {
     gClient->setConnectionParams(24, 24, 0, 500);
     gClient->setConnectTimeout(10 * 1000);
 
-    Serial.println("BLE: connecting...");
-    if (!gClient->connect(gDev)) {
-        Serial.println("BLE: connect() returned false");
-        return false;
-    }
+    if (!gClient->connect(gDev)) return false;
 
-    // TARGETED service discovery — cat-printers drop the link during full
-    // enumeration, but accept disc_svc_by_uuid for a single UUID.
     auto svc = gClient->getService(SVC_UUID);
-    if (!svc) { Serial.println("BLE: svc not found"); gClient->disconnect(); return false; }
+    if (!svc) { gClient->disconnect(); return false; }
     gTx = svc->getCharacteristic(TX_UUID);
-    if (!gTx) { Serial.println("BLE: TX not found"); gClient->disconnect(); return false; }
+    if (!gTx) { gClient->disconnect(); return false; }
 
-    // Subscribe to RX notifications BEFORE any write
     for (auto u : RX_UUIDS) {
         auto* rx = svc->getCharacteristic(u);
         if (rx && (rx->canNotify() || rx->canIndicate())) rx->subscribe(true, onNotify);
     }
 
-    // MTU upgrade — NimBLE will already have negotiated during connect if we
-    // asked for >23 at init. Read the actual MTU and size chunks accordingly.
     uint16_t mtu = gClient->getMTU();
     gChunkSize = (mtu > 3) ? (size_t)(mtu - 3) : 20;
     if (gChunkSize > 200) gChunkSize = 200;
-    Serial.printf("BLE: ready. MTU=%u chunk=%u\n", mtu, (unsigned)gChunkSize);
-    beepBleUp();                                     // success ding
+    Serial.printf("BLE: printer linked  MTU=%u\n", mtu);
+    beepBleUp();
     if (gBuzzMode == BUZZ_BLE_DISC) setBuzz(BUZZ_OFF);
     delay(100);
     return true;
@@ -825,7 +774,6 @@ static int httpPostJson(const String& path, const String& body) {
 // idle timeout, at the cost of ~3× more requests/min. Trade is fine.
 static const uint32_t LONG_POLL_SEC     = 10;
 static const uint32_t LONG_POLL_HTTP_MS = (LONG_POLL_SEC + 8) * 1000;
-static uint32_t       gPollTick         = 0;
 static bool processJob() {
     String body;
     uint32_t t0 = millis();
@@ -855,8 +803,7 @@ static bool processJob() {
     }
 
     if (doc["job"].isNull() || !doc["job"].is<JsonObject>()) {
-        if ((gPollTick++ % 4) == 0) Serial.printf("poll: no job (%lums)\n", (unsigned long)dt);
-        return false;
+        return false;   // long-poll returned with no job — silent in prod
     }
 
     JsonObject job = doc["job"];
@@ -958,9 +905,8 @@ static void publishStatus() {
 class CfgWriteCB : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
         std::string raw = c->getValue();
-        Serial.printf("BLE-cfg write: %s\n", raw.c_str());
         DynamicJsonDocument d(512);
-        if (deserializeJson(d, raw)) { Serial.println("BLE-cfg: bad JSON"); return; }
+        if (deserializeJson(d, raw)) return;
         const char* field = d["field"] | "";
         const char* value = d["value"] | "";
         if (!*field) return;
@@ -972,7 +918,7 @@ class CfgWriteCB : public NimBLECharacteristicCallbacks {
         };
         bool ok = false;
         for (auto k : ALLOWED) if (!strcmp(field, k)) { ok = true; break; }
-        if (!ok) { Serial.printf("BLE-cfg: rejected field %s\n", field); return; }
+        if (!ok) return;
 
         saveConfigField(field, String(value));
         publishStatus();
@@ -982,9 +928,7 @@ class CfgWriteCB : public NimBLECharacteristicCallbacks {
 class CfgApplyCB : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
         std::string cmd = c->getValue();
-        Serial.printf("BLE-cfg apply: %s\n", cmd.c_str());
         if (cmd == "reboot") {
-            Serial.println("BLE-cfg: rebooting in 1s...");
             delay(1000);
             ESP.restart();
         } else if (cmd == "wifi") {
@@ -992,10 +936,7 @@ class CfgApplyCB : public NimBLECharacteristicCallbacks {
             connectWifi();
             publishStatus();
         } else if (cmd == "wipe") {
-            // Factory reset: clear all NVS keys so the next boot uses the
-            // compiled-in DEF_* defaults. Useful when reflashing with new
-            // defaults but NVS still has the old values.
-            Serial.println("BLE-cfg: WIPING NVS — reboot in 1s");
+            // Factory reset: clear NVS so next boot uses compiled-in defaults.
             gPrefs.begin(NVS_NS, false);
             gPrefs.clear();
             gPrefs.end();
@@ -1071,9 +1012,6 @@ static void waitPowerReleased() {
  *  "reboot on button press" — but functionally indistinguishable for the
  *  user. */
 static void enterSleep() {
-    Serial.println("sleep: shutting down — chip will reset on next button press");
-    // (beepSleepDown already played from onPowerButtonPressed for instant
-    //  feedback — don't replay it here.)
     stopIoTask();
     setBuzz(BUZZ_OFF);
     noTone(BUZZER_PIN);
