@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
             height:     job.height,
             bitmap_b64: job.payload.toString('base64'),
             feed_lines: FEED_LINES,
+            copies:     job.copies ?? 1,
         } : null,
     });
 }

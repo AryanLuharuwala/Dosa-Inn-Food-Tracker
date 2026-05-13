@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     const kind: string = body?.kind ?? 'bill';
     const orderId: unknown = body?.orderId;
+    // copies: number of prints from a single fetch. Defaults: caller-supplied,
+    // else use the relevant setting (kotCopies / billCopies), else 1.
+    const explicitCopies: unknown = body?.copies;
 
     if (!['bill', 'kot', 'test', 'stats'].includes(kind)) {
         return NextResponse.json({ error: 'invalid kind' }, { status: 400 });
@@ -57,7 +60,13 @@ export async function POST(req: NextRequest) {
         doc = buildStatsDoc(orders, restaurantName);
     }
 
+    const copies =
+        typeof explicitCopies === 'number' && explicitCopies > 0 ? explicitCopies :
+        kind === 'kot'  ? (settings.kotCopies  ?? 1) :
+        kind === 'bill' ? (settings.billCopies ?? 1) :
+        1;
+
     const { data, width, height } = await renderDocServer(doc);
-    const jobId = await enqueuePrintJob(data, width, height, kind as 'bill' | 'kot' | 'test' | 'stats');
-    return NextResponse.json({ ok: true, jobId, kind });
+    const jobId = await enqueuePrintJob(data, width, height, kind as 'bill' | 'kot' | 'test' | 'stats', copies);
+    return NextResponse.json({ ok: true, jobId, kind, copies });
 }

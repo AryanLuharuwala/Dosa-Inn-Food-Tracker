@@ -9,6 +9,7 @@ interface DeviceSettings {
     role: 'all' | 'kot' | 'bill';
     speed: number;
     energy: number;
+    ring: 'short' | 'long';
 }
 
 interface Device {
@@ -235,7 +236,7 @@ export default function PrintDevicesPage() {
                             {active.map(d => {
                                 const { label: statusLabel, online } = onlineStatus(d.last_seen_at);
                                 const isOpen = openSettings === d.id;
-                                const s: DeviceSettings = d.settings ?? { role: 'all', speed: 34, energy: 13500 };
+                                const s: DeviceSettings = d.settings ?? { role: 'all', speed: 34, energy: 13500, ring: 'short' };
                                 return (
                                     <React.Fragment key={d.id}>
                                         <tr>
@@ -306,6 +307,18 @@ export default function PrintDevicesPage() {
                                                                 onChange={e => saveSettings(d.id, { energy: parseInt(e.target.value, 10) })}
                                                                 disabled={savingSettings}
                                                             />
+                                                        </label>
+                                                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>New-order tone</span>
+                                                            <select
+                                                                value={s.ring}
+                                                                onChange={e => saveSettings(d.id, { ring: e.target.value as DeviceSettings['ring'] })}
+                                                                disabled={savingSettings}
+                                                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db' }}
+                                                            >
+                                                                <option value="short">Short (one chime)</option>
+                                                                <option value="long">Long (loops until acknowledged)</option>
+                                                            </select>
                                                         </label>
                                                         {savingSettings && <span style={{ fontSize: 12, color: '#6b7280' }}>Saving…</span>}
                                                     </div>

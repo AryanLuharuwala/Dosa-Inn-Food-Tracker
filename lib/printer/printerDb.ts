@@ -11,12 +11,16 @@ export interface DeviceSettings {
     speed: number;
     /** Heating energy 0–65535. Higher = darker. iPrint default 13500. */
     energy: number;
+    /** New-order alert tone duration. `short` plays the chime once (~3s);
+     *  `long` loops the chime until silenced by a button press. */
+    ring: 'short' | 'long';
 }
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
     role:   'all',
     speed:  34,
     energy: 13500,
+    ring:   'short',
 };
 
 export interface PrintDevice {
@@ -38,6 +42,9 @@ export interface PrintJob {
     /** Optional — present for jobs created via /api/print/jobs with `kind`.
      *  Used for device-role filtering when claiming. */
     kind?: 'bill' | 'kot' | 'test' | 'stats';
+    /** How many copies the device should print from this single fetch. The
+     *  device prints `copies` times then acks once. Default 1 if missing. */
+    copies?: number;
     status: 'queued' | 'inflight' | 'dead';
     attempts: number;
     visible_after: Date;
@@ -110,6 +117,7 @@ export async function updateDeviceSettings(id: string, patch: Partial<DeviceSett
     merged.speed  = Math.max(1, Math.min(255, Math.floor(merged.speed)));
     merged.energy = Math.max(0, Math.min(65535, Math.floor(merged.energy)));
     if (!['all', 'kot', 'bill'].includes(merged.role)) merged.role = 'all';
+    if (!['short', 'long'].includes(merged.ring)) merged.ring = 'short';
     await db.collection('print_devices').updateOne({ id }, { $set: { settings: merged } });
     return merged;
 }
@@ -168,6 +176,7 @@ export async function enqueuePrintJob(
     width: number,
     height: number,
     kind?: PrintJob['kind'],
+    copies: number = 1,
 ): Promise<string> {
     const db = await getDb();
     const id = randomBytes(16).toString('hex');
@@ -178,6 +187,7 @@ export async function enqueuePrintJob(
         width,
         height,
         kind,
+        copies: Math.max(1, Math.min(10, Math.floor(copies))),
         status: 'queued',
         attempts: 0,
         visible_after: new Date(),

@@ -107,22 +107,21 @@ export default function AdminPage() {
     const printNCopies = async (n: number, send: () => Promise<void>) => {
         for (let i = 0; i < Math.max(1, n); i++) await send();
     };
-    // Fire-and-forget enqueue to the ESP32 bridge. Runs in parallel with direct
-    // BLE when the browser is paired; when only the ESP bridge is online,
-    // this is the sole printing path (and that's fine).
-    const enqueueJob = (kind: 'bill' | 'kot', orderId: string) => {
+    // Fire-and-forget enqueue to the ESP32 bridge. We pass copies explicitly
+    // so the device prints N times from a single fetch — the server stamps
+    // `copies` onto the job and the ESP reads it back. This keeps the
+    // browser-BLE path and the server-queue path consistent.
+    const enqueueJob = (kind: 'bill' | 'kot', orderId: string, copies: number) => {
         fetch('/api/print/jobs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId, kind }),
+            body: JSON.stringify({ orderId, kind, copies }),
         }).catch(() => {});
     };
     const handlePrintKOT = async (order: Order) => {
         setPrintingId(order.orderId);
         try {
-            enqueueJob('kot', order.orderId);
-            // Only attempt browser BLE if it's actually paired — otherwise the
-            // ESP queue alone handles it.
+            enqueueJob('kot', order.orderId, kotCopies);
             if (printer.isConnected) {
                 await printNCopies(kotCopies, () => printer.printKOT(order, restaurantName));
             }
@@ -133,7 +132,7 @@ export default function AdminPage() {
     const handlePrintBill = async (order: Order) => {
         setPrintingId(order.orderId);
         try {
-            enqueueJob('bill', order.orderId);
+            enqueueJob('bill', order.orderId, billCopies);
             if (printer.isConnected) {
                 await printNCopies(billCopies, () => printer.printBill(order, restaurantName, { template: billTemplate, tagline: contextTagline }));
             }
@@ -404,7 +403,7 @@ export default function AdminPage() {
                     fetch('/api/print/jobs', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ orderId: order.orderId, kind: 'kot' }),
+                        body: JSON.stringify({ orderId: order.orderId, kind: 'kot', copies: kotCopies }),
                     }).catch(() => {});
                     // Also fire over BLE if this tab is paired — gives same-room
                     // printer the fastest path. The BLE client serializes writes

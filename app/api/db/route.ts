@@ -269,7 +269,7 @@ export async function POST(req: NextRequest) {
                     const restaurantName = settings.restaurantName ?? 'Restaurant';
                     const doc = buildKOTDoc(order, restaurantName);
                     const { data, width, height } = await renderDocServer(doc);
-                    await enqueuePrintJob(data, width, height, 'kot');
+                    await enqueuePrintJob(data, width, height, 'kot', settings.kotCopies ?? 1);
                 } catch (err) {
                     console.warn('[order_add] auto-enqueue KOT failed:', err);
                 }

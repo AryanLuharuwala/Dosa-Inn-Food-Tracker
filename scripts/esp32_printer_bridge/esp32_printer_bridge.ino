@@ -18,27 +18,42 @@
 #include <mbedtls/base64.h>
 #include <Preferences.h>
 
+// Declared up here so Arduino's auto-generated prototypes (which are emitted
+// at the top of the file before the BUZZER section) can see BuzzMode.
+enum BuzzMode {
+    BUZZ_OFF,
+    BUZZ_PRESS,
+    BUZZ_RING,
+    BUZZ_OK,
+    BUZZ_ERROR,
+    BUZZ_WIFI_DISC,
+    BUZZ_BLE_DISC,
+};
+
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 // Compiled-in defaults. At boot, ESP loads values from NVS and falls back to
 // these if the NVS slot is empty. After BLE-config writes new values, they
 // persist to NVS and survive reboots.
 
 static const char* DEF_WIFI_SSID     = "GUEST_SECURED";
-static const char* DEF_WIFI_IDENTITY = "21MI31032";       // empty for plain WPA2
+static const char* DEF_WIFI_IDENTITY = "21MI31032";// empty for plain WPA2
 static const char* DEF_WIFI_USERNAME = "21MI31032";
 static const char* DEF_WIFI_PASSWORD = "$tandard4B";
 
 static const char* DEF_SERVER_BASE  = "https://pollys.food";
 static const char* DEF_DEVICE_ID    = "printer";
-static const char* DEF_DEVICE_TOKEN = "9X-rFxcsCzHqoHtMS3UbIM4gpLyvXSrKpM4G0auw9uQ";
+static const char* DEF_DEVICE_TOKEN = "PG82uQl3hbqvK8AIcYg_boIRbEhlBO6_Y6fWJ4yrSHA";
 
 // Live, in-RAM config (loaded from NVS at boot). All read paths use these.
 static String gWifiSsid, gWifiIdentity, gWifiUsername, gWifiPassword;
 static String gServerBase, gDeviceId, gDeviceToken;
 
 // Server-pushed runtime settings (refreshed on every long-poll response).
-static uint8_t  gSpeed  = 34;
-static uint16_t gEnergy = 13500;
+static uint8_t  gSpeed     = 34;
+static uint16_t gEnergy    = 13500;
+// New-order tone behaviour. true = short (single chime then silence),
+// false = long (chime loops until silenced by a button press).
+static bool     gRingShort = true;
 
 static Preferences gPrefs;
 #define NVS_NS "pcfg"
@@ -120,40 +135,388 @@ static const uint16_t BYTES_PER_ROW = 48;   // 384 px / 8
 static const uint8_t LATTICE_START[11] = {0xaa,0x55,0x17,0x38,0x44,0x5f,0x5f,0x5f,0x44,0x38,0x2c};
 static const uint8_t LATTICE_END[11]   = {0xaa,0x55,0x17,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x17};
 
-// ─── BUZZER (piezo on GPIO 15) ───────────────────────────────────────────────
-static const uint8_t BUZZER_PIN = 15;
+// ─── BUZZER + BUTTONS (non-blocking state machine) ───────────────────────────
+//
+// Pins:
+//   GPIO 15        — piezo buzzer (PWM tone)
+//   GPIO 7         — momentary power-toggle button (LOW = pressed)
+//   GPIO 14/9/22   — momentary action buttons (LOW = pressed)
+//
+// Buzzer modes:
+//   BUZZ_PRESS     — short button-press click
+//   BUZZ_RING      — looping C-E-G chime, used when a new print job arrived;
+//                    stops on any button press
+//   BUZZ_OK        — two-note success ding after a print
+//   BUZZ_ERROR     — two-note descending sad-trombone after a print failure
+//   BUZZ_WIFI_DISC — periodic low beep while WiFi is down
+//   BUZZ_BLE_DISC  — periodic mid beep while the printer link is down
+
+static const uint8_t BUZZER_PIN     = 15;
+static const uint8_t BTN_POWER      = 7;
+static const uint8_t BTN_TOGGLES[]  = { 14, 9, 22 };
+static const size_t  N_TOGGLES      = sizeof(BTN_TOGGLES) / sizeof(BTN_TOGGLES[0]);
+// Onboard green LED on ESP32-C6 DevKitC. Toggled on every button-press
+// detection so we can visually verify the chip is registering presses even
+// when the buzzer is silent (e.g. after wake, while debugging).
+static const uint8_t ONBOARD_LED    = 8;
+static bool          gLedState      = false;
+
+static void toggleOnboardLed() {
+    gLedState = !gLedState;
+    digitalWrite(ONBOARD_LED, gLedState ? HIGH : LOW);
+}
+
+static BuzzMode  gBuzzMode      = BUZZ_OFF;
+static uint32_t  gBuzzStart     = 0;
+
+// Track power state. When false, WiFi and BLE are off and we enter light sleep
+// between loop iterations, woken by the power button.
+static bool      gPoweredOn     = true;
+
+// For disconnect alarms — we only start them after the device has been down
+// for a few seconds, so a quick blip doesn't trigger noise.
+static uint32_t  gWifiDownSince = 0;
+static uint32_t  gBleDownSince  = 0;
+
+static void buzzerSilence() {
+    noTone(BUZZER_PIN);
+    digitalWrite(BUZZER_PIN, LOW);
+}
+
+static void setBuzz(BuzzMode m) {
+    gBuzzMode  = m;
+    gBuzzStart = millis();
+    if (m == BUZZ_OFF) buzzerSilence();
+}
 
 static void buzzerInit() {
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
 }
 
-/** Single short beep — "new job arrived, about to print". */
-static void buzzNewJob() {
-    tone(BUZZER_PIN, 880, 120);  // A5, 120ms
-    delay(160);
-    noTone(BUZZER_PIN);
-    digitalWrite(BUZZER_PIN, LOW);
+/** Drive the buzzer non-blockingly based on current mode. Must be called
+ *  every loop iteration. */
+static void buzzerTick() {
+    const uint32_t elapsed = millis() - gBuzzStart;
+    switch (gBuzzMode) {
+        case BUZZ_OFF:
+            break;
+        case BUZZ_PRESS:
+            if (elapsed < 80) tone(BUZZER_PIN, 1500); else setBuzz(BUZZ_OFF);
+            break;
+        case BUZZ_RING: {
+            // Ascending C-E-G chime. If gRingShort, play exactly once and
+            // stop. If long, loop with a ~1.9s rest between cycles until a
+            // button press silences it.
+            const uint32_t t = gRingShort ? elapsed : (elapsed % 3000);
+            int hz = 0;
+            if      (t < 240)              hz = 523;
+            else if (t >= 320 && t < 560)  hz = 659;
+            else if (t >= 640 && t < 1100) hz = 784;
+            if (hz) tone(BUZZER_PIN, hz); else buzzerSilence();
+            // Short mode: after the chime finishes (~1.1s), terminate.
+            if (gRingShort && elapsed >= 1200) setBuzz(BUZZ_OFF);
+            break;
+        }
+        case BUZZ_OK:
+            if      (elapsed < 90)  tone(BUZZER_PIN, 1047);          // C6
+            else if (elapsed < 110) buzzerSilence();
+            else if (elapsed < 240) tone(BUZZER_PIN, 1568);          // G6
+            else                    setBuzz(BUZZ_OFF);
+            break;
+        case BUZZ_ERROR:
+            if      (elapsed < 200) tone(BUZZER_PIN, 392);           // G4
+            else if (elapsed < 230) buzzerSilence();
+            else if (elapsed < 580) tone(BUZZER_PIN, 311);           // Eb4
+            else                    setBuzz(BUZZ_OFF);
+            break;
+        case BUZZ_WIFI_DISC: {
+            // Tiny click every 5s — present but not annoying.
+            const uint32_t phase = elapsed % 5000;
+            if (phase < 15) tone(BUZZER_PIN, 400); else buzzerSilence();
+            break;
+        }
+        case BUZZ_BLE_DISC: {
+            // Tiny click every 5s, different pitch from wifi.
+            const uint32_t phase = elapsed % 5000;
+            if (phase < 15) tone(BUZZER_PIN, 700); else buzzerSilence();
+            break;
+        }
+    }
 }
 
-/** Double rising beep — "print succeeded". */
-static void buzzOk() {
-    tone(BUZZER_PIN, 1047, 90);  // C6
-    delay(110);
-    tone(BUZZER_PIN, 1568, 140); // G6
-    delay(160);
-    noTone(BUZZER_PIN);
-    digitalWrite(BUZZER_PIN, LOW);
+static bool isAlarmActive() {
+    return gBuzzMode == BUZZ_RING || gBuzzMode == BUZZ_WIFI_DISC || gBuzzMode == BUZZ_BLE_DISC;
 }
 
-/** Low sad-trombone — "print failed". */
-static void buzzError() {
-    tone(BUZZER_PIN, 392, 200);  // G4
-    delay(220);
-    tone(BUZZER_PIN, 311, 350);  // Eb4
-    delay(370);
+// ── Synchronous transition beeps ─────────────────────────────────────────────
+// Short blocking patterns used at one-shot state changes (sleep, wake, wifi
+// up, ble scan, ble up). These bypass the state machine because the events
+// happen on code paths that are themselves blocking anyway.
+
+// IO-task pause flag — declared here (before blockingChord uses it). The
+// ioTask polls this each iteration; while true the task skips its work, so
+// the main thread can call tone() without racing.
+static volatile bool gIoTaskPaused = false;
+
+static void blockingChord(const int* notes, const int* durs, size_t n) {
+    // Pause the IO task so it doesn't simultaneously call tone() and corrupt
+    // the LEDC channel state. Restore the previous pause state at the end so
+    // nested callers (enterSleep already paused) don't unpause prematurely.
+    const bool wasPaused = gIoTaskPaused;
+    gIoTaskPaused = true;
+    delay(20);   // let the IO task land on its vTaskDelay
+
+    setBuzz(BUZZ_OFF);
+    for (size_t i = 0; i < n; i++) {
+        if (notes[i] > 0) tone(BUZZER_PIN, notes[i]);
+        else              noTone(BUZZER_PIN);
+        delay(durs[i]);
+    }
     noTone(BUZZER_PIN);
     digitalWrite(BUZZER_PIN, LOW);
+
+    gIoTaskPaused = wasPaused;
+}
+
+/** Descending — "going to sleep". */
+static void beepSleepDown() {
+    static const int n[] = {880, 0, 660, 0, 440};
+    static const int d[] = { 80, 30,  80, 30,140};
+    blockingChord(n, d, 5);
+}
+
+/** Ascending — "waking up". */
+static void beepWakeUp() {
+    static const int n[] = {523, 0, 784, 0, 1047};
+    static const int d[] = { 60, 20,  60, 20, 120};
+    blockingChord(n, d, 5);
+}
+
+/** Quick two-note rise — "wifi connected". */
+static void beepWifiUp() {
+    static const int n[] = {659, 0, 988};
+    static const int d[] = { 70, 25, 100};
+    blockingChord(n, d, 3);
+}
+
+/** Short single chirp — "starting BLE scan". */
+static void beepBleScan() {
+    static const int n[] = {1500};
+    static const int d[] = {  40};
+    blockingChord(n, d, 1);
+}
+
+/** Two-note success — "BLE printer connected". */
+static void beepBleUp() {
+    static const int n[] = {1047, 0, 1568};
+    static const int d[] = {  60, 20,  100};
+    blockingChord(n, d, 3);
+}
+
+// Forward declarations for the power-toggle handler.
+static void enterSleep();
+static void exitSleep();
+
+static void onAnyButtonPressed() {
+    // Any press silences a running alarm. Otherwise emit a short click.
+    if (isAlarmActive()) setBuzz(BUZZ_OFF);
+    else                 setBuzz(BUZZ_PRESS);
+}
+
+// Power-button handling crosses thread boundaries: the IO task detects the
+// press, but enterSleep() does WiFi/BLE shutdown which must run from the
+// main loop's context. So the IO task just sets gWantsSleepToggle and the
+// main loop services it. Same pattern for the three toggle-button actions.
+static volatile bool gWantsSleepToggle = false;
+static volatile bool gWantsReprint     = false;   // GPIO 14
+static volatile bool gWantsTestPrint   = false;   // GPIO 9
+static volatile bool gWantsStatus      = false;   // GPIO 22
+
+// Cached bitmap of the most recently printed job. Used by the reprint button.
+// One slot; previous content is freed when a new print succeeds.
+static uint8_t* gLastBmp    = nullptr;
+static uint16_t gLastHeight = 0;
+
+static void onPowerButtonPressed() {
+    Serial.println("power button — flagging main loop for sleep toggle");
+    // Instant feedback — play "going away" tone right here, the moment the
+    // hold threshold was met. Don't wait for the main loop to service the
+    // flag and call enterSleep (which is async + can be delayed by an
+    // in-flight HTTP poll). The tone is synchronous (~500ms) and runs in
+    // the IO task; nothing else needs to run during it.
+    beepSleepDown();
+    gWantsSleepToggle = true;
+}
+
+// Power button: HOLD-to-trigger. A brief touch shouldn't dump us into sleep,
+// so the pin must stay LOW continuously for POWER_HOLD_MS before firing.
+// Wake-from-sleep is handled by gpio_wakeup (configured separately in
+// enterSleep) and ignores this — a quick tap still wakes the device.
+static const uint32_t POWER_HOLD_MS = 400;
+
+// FreeRTOS task that runs buttonsTick() and buzzerTick() at ~60 Hz on its
+// own stack. Keeps button feedback + alarms responsive even while the main
+// loop is blocked inside HTTPClient on a long-poll.
+//
+// `gIoTaskPaused` (declared above) lets the main loop quiesce this task
+// before fiddling with shared hardware (e.g. arming the GPIO 7 wake source
+// in enterSleep, or playing a synchronous beep that calls tone()).
+static void ioTask(void* arg) {
+    // Hard-reset the buzzer in case LEDC was left in a stuck state by the
+    // previous task instance or by light sleep.
+    Serial.println("[io] task starting — resetting buzzer + state machine");
+    noTone(BUZZER_PIN);
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+    setBuzz(BUZZ_OFF);
+    // First second: don't fire press feedback. Lets us silently adopt the
+    // initial pin states without phantom beeping for switches that are
+    // already in the LOW position at task start.
+    const uint32_t silentUntil = millis() + 1000;
+
+    uint32_t lastBeat = 0;
+    for (;;) {
+        if (!gIoTaskPaused) {
+            // Save current buzz mode so we can suppress press-beeps in the
+            // silent window without affecting alarms.
+            const BuzzMode preTickMode = gBuzzMode;
+            buttonsTick();
+            if (millis() < silentUntil && gBuzzMode == BUZZ_PRESS && preTickMode != BUZZ_PRESS) {
+                setBuzz(BUZZ_OFF);   // squash phantom press during settle window
+            }
+            buzzerTick();
+        }
+        const uint32_t now = millis();
+        if (now - lastBeat > 3000) {
+            lastBeat = now;
+            Serial.printf("[io] alive paused=%d  pwr=%d  toggles=%d%d%d  buzz=%d\n",
+                          (int)gIoTaskPaused,
+                          digitalRead(BTN_POWER),
+                          digitalRead(BTN_TOGGLES[0]),
+                          digitalRead(BTN_TOGGLES[1]),
+                          digitalRead(BTN_TOGGLES[2]),
+                          (int)gBuzzMode);
+            toggleOnboardLed();
+        }
+        vTaskDelay(pdMS_TO_TICKS(15));
+    }
+}
+
+/** Reassert pullups on every input button. Arduino's pinMode(INPUT_PULLUP)
+ *  doesn't always stick on ESP32-C6 — the IO-mux can come up in a state that
+ *  leaves the pad floating. Calling the IDF gpio_set_pull_mode directly is
+ *  the only reliable way. */
+static void forceButtonPullups() {
+    gpio_set_direction((gpio_num_t)BTN_POWER, GPIO_MODE_INPUT);
+    gpio_set_pull_mode((gpio_num_t)BTN_POWER, GPIO_PULLUP_ONLY);
+    for (size_t i = 0; i < N_TOGGLES; i++) {
+        gpio_set_direction((gpio_num_t)BTN_TOGGLES[i], GPIO_MODE_INPUT);
+        gpio_set_pull_mode((gpio_num_t)BTN_TOGGLES[i], GPIO_PULLUP_ONLY);
+    }
+}
+
+static TaskHandle_t gIoTaskHandle = NULL;
+
+static void startIoTask() {
+    if (gIoTaskHandle != NULL) return; // already running
+    xTaskCreate(ioTask, "io", 4096, NULL, 1, &gIoTaskHandle);
+    Serial.println("[io] task created");
+}
+
+static void stopIoTask() {
+    if (gIoTaskHandle == NULL) return;
+    vTaskDelete(gIoTaskHandle);
+    gIoTaskHandle = NULL;
+    Serial.println("[io] task killed");
+}
+
+static void buttonsInit() {
+    forceButtonPullups();
+    pinMode(ONBOARD_LED, OUTPUT);
+    digitalWrite(ONBOARD_LED, LOW);
+    startIoTask();
+}
+
+/** Poll all buttons. Toggle buttons fire on press-edge (with 20ms debounce);
+ *  power button fires only after being held LOW continuously for POWER_HOLD_MS.
+ *
+ *  On the first call after a (re)start, we ADOPT the current pin states as
+ *  the baseline — so a toggle switch that's already in the LOW position
+ *  doesn't generate a phantom press event. */
+static void buttonsTick() {
+    static bool     prevToggle[3]      = { false, false, false };
+    static uint32_t lastToggleChange[3] = { 0, 0, 0 };
+    static uint32_t powerLowSince      = 0;
+    static bool     powerFired         = false;
+    static bool     initialized        = false;
+
+    const uint32_t now = millis();
+    if (!initialized) {
+        for (size_t i = 0; i < N_TOGGLES; i++) {
+            prevToggle[i] = digitalRead(BTN_TOGGLES[i]) == LOW;
+            lastToggleChange[i] = now;
+        }
+        initialized = true;
+        Serial.printf("[io] adopted initial toggles: %d%d%d\n",
+                      (int)prevToggle[0], (int)prevToggle[1], (int)prevToggle[2]);
+    }
+
+    const uint32_t DEBOUNCE_MS = 20;
+    for (size_t i = 0; i < N_TOGGLES; i++) {
+        const bool reading = digitalRead(BTN_TOGGLES[i]) == LOW;
+        if (reading != prevToggle[i]) {
+            if (now - lastToggleChange[i] >= DEBOUNCE_MS) {
+                prevToggle[i] = reading;
+                lastToggleChange[i] = now;
+                if (reading) {        // transitioned to LOW = "pressed"
+                    Serial.printf("btn press: GPIO %u\n", BTN_TOGGLES[i]);
+                    toggleOnboardLed();
+                    onAnyButtonPressed();
+                    // Map each toggle button to a specific action. Flag is
+                    // set here (IO task); the main loop dispatches it so the
+                    // heavy operations (catPrint, ESP.restart) don't run on
+                    // the IO task's small stack.
+                    switch (BTN_TOGGLES[i]) {
+                        case 14: gWantsReprint   = true; break;
+                        case  9: gWantsTestPrint = true; break;
+                        case 22: gWantsStatus    = true; break;
+                    }
+                }
+            }
+        } else {
+            lastToggleChange[i] = now;
+        }
+    }
+
+    // Power-button: TOGGLE switch (latching). On wake, the switch is still
+    // in the ON position (LOW) — we'd immediately re-trigger sleep without
+    // the powerArmed gate. Require the pin to be observed HIGH at least
+    // once after the (re)start of the IO task before any LOW press counts.
+    static bool powerArmed = false;
+    const bool powerLow = digitalRead(BTN_POWER) == LOW;
+    static bool prevPowerLow = false;
+    if (powerLow != prevPowerLow) {
+        Serial.printf("power pin %s%s\n",
+                      powerLow ? "LOW (pressed)" : "HIGH (released)",
+                      (!powerLow && !powerArmed) ? " → armed" : "");
+        prevPowerLow = powerLow;
+    }
+    if (!powerLow) powerArmed = true;     // first HIGH unlocks the trigger
+
+    if (powerArmed && powerLow) {
+        if (powerLowSince == 0) powerLowSince = millis();
+        if (!powerFired && millis() - powerLowSince >= POWER_HOLD_MS) {
+            powerFired = true;
+            Serial.printf("power held %lums — triggering\n",
+                          (unsigned long)POWER_HOLD_MS);
+            toggleOnboardLed();
+            onPowerButtonPressed();
+        }
+    } else {
+        powerLowSince = 0;
+        powerFired    = false;
+    }
 }
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
@@ -285,6 +648,7 @@ static bool connectPrinter() {
     if (gBleConnected && gTx) return true;
 
     Serial.println("BLE: scanning 8s...");
+    beepBleScan();    // brief chirp so the user knows we're looking
     gDev = nullptr;
     auto scan = NimBLEDevice::getScan();
     scan->setScanCallbacks(&gScanCB, false);
@@ -332,41 +696,50 @@ static bool connectPrinter() {
     gChunkSize = (mtu > 3) ? (size_t)(mtu - 3) : 20;
     if (gChunkSize > 200) gChunkSize = 200;
     Serial.printf("BLE: ready. MTU=%u chunk=%u\n", mtu, (unsigned)gChunkSize);
+    beepBleUp();                                     // success ding
+    if (gBuzzMode == BUZZ_BLE_DISC) setBuzz(BUZZ_OFF);
     delay(100);
     return true;
 }
 
 // ─── WIFI (WPA2-Enterprise or plain WPA2) ────────────────────────────────────
+// Non-blocking: kicks off the connection and returns immediately. The IDF
+// stack handles association in the background; we react via the WiFi event
+// callback to play the "wifi up" tone and clear any disconnect alarm.
+// Loop code never blocks on WiFi — it just checks WiFi.status() and skips
+// HTTP work if down.
+
+static volatile bool gWifiUpEvent = false;
+
+static void onWifiEvent(WiFiEvent_t event) {
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+            gWifiUpEvent = true;
+            break;
+        default:
+            break;
+    }
+}
+
 static void connectWifi() {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_STA);
-    // Let the IDF stack reconnect on drops without us having to notice in the
-    // main loop. Crucial on flaky captive-portal networks like GUEST_SECURED
-    // that kill idle TCP connections mid-long-poll.
     WiFi.setAutoReconnect(true);
     WiFi.persistent(true);
+    WiFi.onEvent(onWifiEvent);
+
     if (gWifiIdentity.length() > 0) {
-        // WPA2-Enterprise
         esp_eap_client_set_identity((uint8_t*)gWifiIdentity.c_str(), gWifiIdentity.length());
         esp_eap_client_set_username((uint8_t*)gWifiUsername.c_str(), gWifiUsername.length());
         esp_eap_client_set_password((uint8_t*)gWifiPassword.c_str(), gWifiPassword.length());
         esp_wifi_sta_enterprise_enable();
         WiFi.begin(gWifiSsid.c_str());
     } else {
-        // Plain WPA2 — psk in gWifiPassword
         WiFi.begin(gWifiSsid.c_str(), gWifiPassword.c_str());
     }
-    Serial.printf("WiFi: joining %s ", gWifiSsid.c_str());
-    uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) {
-        delay(500); Serial.print('.');
-    }
-    Serial.println();
-    if (WiFi.status() == WL_CONNECTED)
-        Serial.printf("WiFi: IP=%s RSSI=%d\n",
-                      WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    else
-        Serial.println("WiFi: failed, will retry");
+    Serial.printf("WiFi: kicked off association to %s (non-blocking)\n",
+                  gWifiSsid.c_str());
 }
 
 // ─── HTTP / HTTPS ────────────────────────────────────────────────────────────
@@ -470,11 +843,14 @@ static bool processJob() {
     if (doc["settings"].is<JsonObject>()) {
         uint8_t  newSpeed  = doc["settings"]["speed"]  | gSpeed;
         uint16_t newEnergy = doc["settings"]["energy"] | gEnergy;
-        if (newSpeed != gSpeed || newEnergy != gEnergy) {
-            Serial.printf("settings: speed %u→%u energy %u→%u\n",
-                          gSpeed, newSpeed, gEnergy, newEnergy);
-            gSpeed  = newSpeed;
-            gEnergy = newEnergy;
+        const char* newRing = doc["settings"]["ring"] | (gRingShort ? "short" : "long");
+        const bool newRingShort = strcmp(newRing, "short") == 0;
+        if (newSpeed != gSpeed || newEnergy != gEnergy || newRingShort != gRingShort) {
+            Serial.printf("settings: speed %u→%u energy %u→%u ring=%s\n",
+                          gSpeed, newSpeed, gEnergy, newEnergy, newRing);
+            gSpeed     = newSpeed;
+            gEnergy    = newEnergy;
+            gRingShort = newRingShort;
         }
     }
 
@@ -487,6 +863,9 @@ static bool processJob() {
     const char* id     = job["id"]         | "";
     uint16_t    height = job["height"]     | 0;
     const char* bmpB64 = job["bitmap_b64"] | "";
+    uint8_t     copies = job["copies"]     | 1;
+    if (copies < 1) copies = 1;
+    if (copies > 10) copies = 10;
     if (!*id || !*bmpB64 || height == 0) { Serial.println("Job: missing fields"); return false; }
 
     size_t expect = BYTES_PER_ROW * (size_t)height;
@@ -500,23 +879,38 @@ static bool processJob() {
         free(bmp); return false;
     }
 
-    Serial.printf("Job %s: 384x%u\n", id, height);
-    buzzNewJob();                 // single short beep — new job inbound
+    Serial.printf("Job %s: 384x%u × %u copies\n", id, height, copies);
+    setBuzz(BUZZ_RING);   // new-order alert (short or long per settings)
 
     if (!connectPrinter()) {
         free(bmp);
         httpPostJson(String("/api/print/jobs/") + id + "/ack",
                      "{\"status\":\"error\",\"error\":\"printer_unavailable\"}");
-        buzzError();
+        setBuzz(BUZZ_ERROR);
         return false;
     }
 
-    bool ok = catPrint(bmp, height);
-    free(bmp);
+    // Print N copies from a single fetch. One ack at the end.
+    bool ok = true;
+    for (uint8_t c = 0; c < copies && ok; c++) {
+        if (copies > 1) Serial.printf("  copy %u/%u\n", c + 1, copies);
+        ok = catPrint(bmp, height);
+        if (c + 1 < copies) delay(150);    // small gap between copies
+    }
+    if (ok) {
+        // Transfer ownership to the reprint cache. Free any previously cached
+        // bitmap; bmp will live on (referenced by gLastBmp) until the next
+        // successful print replaces it.
+        free(gLastBmp);
+        gLastBmp    = bmp;
+        gLastHeight = height;
+        bmp = nullptr;        // don't double-free below
+    }
+    if (bmp) free(bmp);
     httpPostJson(String("/api/print/jobs/") + id + "/ack",
                  ok ? "{\"status\":\"ok\"}" : "{\"status\":\"error\",\"error\":\"print_failed\"}");
     Serial.printf("Job %s: %s\n", id, ok ? "printed" : "FAILED");
-    if (ok) buzzOk(); else buzzError();
+    if (!ok) setBuzz(BUZZ_ERROR);
     return ok;
 }
 
@@ -638,12 +1032,234 @@ static void startConfigGattServer() {
 }
 
 // ─── SETUP / LOOP ────────────────────────────────────────────────────────────
+// ─── SLEEP / WAKE ────────────────────────────────────────────────────────────
+// Light sleep with esp_sleep_enable_gpio_wakeup() — works with any GPIO on
+// the ESP32-C6 (no RTC pin restriction). EXT1 was wrong here; gpio_wakeup is
+// the correct API for light-sleep + ordinary GPIOs.
+#include <esp_sleep.h>
+#include <driver/gpio.h>
+
+/** Wait until BTN_POWER has been released (HIGH) for STABLE_MS continuously.
+ *  Has a hard 5-second timeout — if the pullup is misconfigured and the pin
+ *  is stuck reading LOW, we bail out instead of blocking the main task
+ *  forever. */
+static void waitPowerReleased() {
+    const uint32_t STABLE_MS = 120;
+    const uint32_t TIMEOUT_MS = 5000;
+    const uint32_t startMs   = millis();
+    uint32_t stableSince     = 0;
+    for (;;) {
+        if (millis() - startMs > TIMEOUT_MS) {
+            Serial.println("waitPowerReleased: timeout — proceeding anyway");
+            return;
+        }
+        if (digitalRead(BTN_POWER) == LOW) {
+            stableSince = 0;
+        } else {
+            if (stableSince == 0) stableSince = millis();
+            if (millis() - stableSince >= STABLE_MS) break;
+        }
+        delay(5);
+    }
+}
+
+/** Deep-sleep until the power button is pressed. On wake, the chip undergoes
+ *  a full RESET — setup() runs from scratch, everything reinitializes. This
+ *  is dramatically simpler than light sleep + post-wake gymnastics, and
+ *  avoids all the state-corruption issues we hit (LEDC stuck, USB-CDC dead,
+ *  prevToggle stale, etc.). The trade-off is that "sleep" really means
+ *  "reboot on button press" — but functionally indistinguishable for the
+ *  user. */
+static void enterSleep() {
+    Serial.println("sleep: shutting down — chip will reset on next button press");
+    // (beepSleepDown already played from onPowerButtonPressed for instant
+    //  feedback — don't replay it here.)
+    stopIoTask();
+    setBuzz(BUZZ_OFF);
+    noTone(BUZZER_PIN);
+    digitalWrite(BUZZER_PIN, LOW);
+
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+
+    // Pin is guaranteed HIGH at this point — the main loop refuses to call
+    // enterSleep() until the user flips the switch off. So arming LOW-level
+    // wake here is safe; it won't fire spuriously.
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN_POWER, ESP_GPIO_WAKEUP_GPIO_LOW);
+
+    Serial.flush();
+    esp_deep_sleep_start();    // ← does not return; chip resets on wake
+}
+
+static void exitSleep() { /* unused with deep sleep — wake = reset */ }
+
+// ─── Button action handlers (run from main loop) ─────────────────────────────
+
+/** GPIO 14: reprint the last successfully-printed job from cached RAM. */
+static void doReprint() {
+    if (!gLastBmp || gLastHeight == 0) {
+        Serial.println("reprint: nothing to reprint");
+        setBuzz(BUZZ_ERROR);
+        return;
+    }
+    Serial.printf("reprint: 384x%u\n", gLastHeight);
+    if (!connectPrinter()) { setBuzz(BUZZ_ERROR); return; }
+    bool ok = catPrint(gLastBmp, gLastHeight);
+    setBuzz(ok ? BUZZ_OK : BUZZ_ERROR);
+}
+
+/** GPIO 9: print a built-in test pattern — no server / no font needed. */
+static void doTestPrint() {
+    const uint16_t H = 160;
+    uint8_t* bmp = (uint8_t*)calloc(BYTES_PER_ROW * H, 1);
+    if (!bmp) { Serial.println("test: OOM"); setBuzz(BUZZ_ERROR); return; }
+
+    for (int y = 0; y < 8; y++)             // black header bar
+        memset(bmp + y * BYTES_PER_ROW, 0xFF, BYTES_PER_ROW);
+    for (int y = 24; y < 56; y++)            // horizontal stripes
+        memset(bmp + y * BYTES_PER_ROW, (y & 1) ? 0xAA : 0x55, BYTES_PER_ROW);
+    for (int y = 72; y < 120; y++)           // checkerboard
+        for (int x = 0; x < BYTES_PER_ROW; x++)
+            bmp[y * BYTES_PER_ROW + x] = ((y ^ x) & 1) ? 0xAA : 0x55;
+    for (int y = H - 8; y < H; y++)          // black footer bar
+        memset(bmp + y * BYTES_PER_ROW, 0xFF, BYTES_PER_ROW);
+
+    Serial.println("test print: starting");
+    if (!connectPrinter()) {
+        Serial.println("test: no printer");
+        free(bmp);
+        setBuzz(BUZZ_ERROR);
+        return;
+    }
+    bool ok = catPrint(bmp, H);
+    free(bmp);
+    Serial.printf("test print: %s\n", ok ? "OK" : "FAIL");
+    setBuzz(ok ? BUZZ_OK : BUZZ_ERROR);
+}
+
+// ── Status-check tones ─────────────────────────────────────────────────────
+// Each tone is shaped to be unambiguously distinguishable by ear.
+//   ALL OK             : long ascending fanfare ending with a high accent
+//   NO WIFI            : 3 LOW pulses (deep, slow)
+//   SERVER UNREACHABLE : 4-note DESCENDING ramp
+//   AUTH FAILURE       : 3 fast HIGH staccato pulses (same pitch)
+//   BLE PRINTER DOWN   : 2-note wobble (mid pitch, alternating)
+
+static void beepStatusOk() {
+    static const int n[] = { 523, 659, 784, 1047, 0, 1568, 1318, 1047 };
+    static const int d[] = {  60,  60,  60,   60, 30,  120,  100,  220 };
+    blockingChord(n, d, 8);
+}
+static void beepStatusNoWifi() {
+    static const int n[] = { 220, 0, 220, 0, 220 };
+    static const int d[] = { 180,100, 180,100, 180 };
+    blockingChord(n, d, 5);
+}
+static void beepStatusNoServer() {
+    static const int n[] = { 784, 0, 587, 0, 392, 0, 261 };
+    static const int d[] = { 100, 30, 100, 30, 100, 30, 220 };
+    blockingChord(n, d, 7);
+}
+static void beepStatusAuth() {
+    static const int n[] = { 1760, 0, 1760, 0, 1760 };
+    static const int d[] = {   70, 50,   70, 50,   70 };
+    blockingChord(n, d, 5);
+}
+static void beepStatusBleDown() {
+    static const int n[] = { 880, 660, 880, 660 };
+    static const int d[] = { 100, 100, 100, 200 };
+    blockingChord(n, d, 4);
+}
+
+/** GPIO 22: probe device health and play a tune that says exactly what's
+ *  wrong (or right). Order of severity:
+ *    1. WiFi   — if down, nothing else matters
+ *    2. Server — auth fail vs unreachable
+ *    3. BLE printer — only checked if server is fine
+ *    4. All good
+ *  The body of the server response is inspected so a "server up but bogus
+ *  reply" doesn't get treated as healthy. */
+static void doStatus() {
+    Serial.println();
+    Serial.println("─── status check ───");
+    setBuzz(BUZZ_OFF);
+
+    // 1. WiFi
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.printf("status: WiFi NOT connected (status=%d)\n", (int)WiFi.status());
+        beepStatusNoWifi();
+        return;
+    }
+    Serial.printf("status: WiFi OK  ssid=%s  ip=%s  rssi=%d\n",
+                  gWifiSsid.c_str(),
+                  WiFi.localIP().toString().c_str(),
+                  WiFi.RSSI());
+
+    // 2. Server probe — short wait, prove TLS+auth+endpoint shape are alive
+    String body;
+    const uint32_t t0 = millis();
+    int code = httpGet(String("/api/print/jobs/next?device=") + gDeviceId + "&wait=0",
+                       body, 8000);
+    const uint32_t dt = millis() - t0;
+    Serial.printf("status: HTTP %d in %lums  bodyLen=%u\n",
+                  code, (unsigned long)dt, (unsigned)body.length());
+
+    if (code == 401 || code == 403) {
+        Serial.println("status: AUTH FAILURE — token rejected by server");
+        beepStatusAuth();
+        return;
+    }
+    if (code < 0) {
+        Serial.printf("status: SERVER UNREACHABLE (httpcode=%d)\n", code);
+        beepStatusNoServer();
+        return;
+    }
+    if (code != 200 && code != 204) {
+        Serial.printf("status: SERVER ERROR (HTTP %d)\n", code);
+        beepStatusNoServer();
+        return;
+    }
+    // Verify response shape — server might return 200 with garbage if there
+    // is misconfiguration. A real shape has settings.role at minimum.
+    if (code == 200) {
+        if (body.indexOf("\"settings\"") < 0) {
+            Serial.println("status: server replied 200 but body looks wrong — treating as server error");
+            Serial.printf("  first 120 chars: %s\n", body.substring(0, 120).c_str());
+            beepStatusNoServer();
+            return;
+        }
+    }
+
+    // 3. BLE printer link
+    if (!gBleConnected) {
+        Serial.println("status: BLE PRINTER NOT CONNECTED — server OK but no printer link");
+        beepStatusBleDown();
+        return;
+    }
+
+    // 4. Everything alive
+    Serial.println("status: ALL GOOD ✓  (wifi + server + ble printer all healthy)");
+    beepStatusOk();
+}
+
+/** Power-on / wake-from-deep-sleep startup chime. Distinct from beepWakeUp
+ *  (which is reserved for light-sleep wake in older builds) — this is the
+ *  fanfare you hear whenever the chip boots, whether from cold power-on or
+ *  from a wake-via-deep-sleep button press. */
+static void beepPowerOn() {
+    static const int n[] = { 392, 0, 587, 0, 784, 0, 1175 };  // G4, D5, G5, D6
+    static const int d[] = {  70, 25,  70, 25,  70, 25,  140 };
+    blockingChord(n, d, 7);
+}
+
 void setup() {
     Serial.begin(115200);
     delay(500);
     Serial.println("\nESP32 cat-printer bridge");
 
     buzzerInit();
+    beepPowerOn();          // audible "I'm awake" the moment the chip starts
+    buttonsInit();
     loadConfig();
 
     NimBLEDevice::init("ESP32-printer");
@@ -655,22 +1271,102 @@ void setup() {
 }
 
 void loop() {
-    if (WiFi.status() != WL_CONNECTED) {
-        connectWifi();
-        delay(2000);
+    // buttonsTick + buzzerTick run on the dedicated ioTask, so they stay
+    // responsive even while we're blocked in HTTPClient.
+
+    // Service button-action flags from the IO task. Each handler runs in
+    // the main loop's context so heavy work (catPrint, WiFi teardown,
+    // ESP.restart) doesn't run on the IO task's small stack.
+    // Sleep is gated on the power pin being HIGH at the moment we actually
+    // call esp_deep_sleep_start. With a TOGGLE switch in the LOW position,
+    // arming LOW-level wake while the pin is already LOW causes immediate
+    // wake → infinite restart loop. So we hold the flag here and wait until
+    // the user flips the switch OFF (pin HIGH) before entering sleep.
+    if (gWantsSleepToggle) {
+        if (digitalRead(BTN_POWER) == LOW) {
+            static uint32_t lastSleepWarn = 0;
+            if (millis() - lastSleepWarn > 2000) {
+                Serial.println("sleep pending — flip switch to OFF position before sleep can proceed");
+                lastSleepWarn = millis();
+            }
+            delay(50);
+            return;   // keep flag set; check again next iteration
+        }
+        gWantsSleepToggle = false;
+        Serial.println("power pin HIGH — entering deep sleep");
+        enterSleep();   // unreachable past here
+    }
+    if (gWantsStatus) {
+        gWantsStatus = false;
+        doStatus();
+    }
+    if (gWantsReprint) {
+        gWantsReprint = false;
+        doReprint();
+    }
+    if (gWantsTestPrint) {
+        gWantsTestPrint = false;
+        doTestPrint();
+    }
+
+    // Always powered on with deep sleep — no soft-off state to maintain.
+    if (false) {
+        delay(50);
         return;
+    }
+
+    // ── WiFi event service ───────────────────────────────────────────────────
+    // beepWifiUp() is blocking; do it from the main loop (not the WiFi
+    // event callback which runs in the event-loop task).
+    const uint32_t now = millis();
+    if (gWifiUpEvent) {
+        gWifiUpEvent = false;
+        Serial.printf("WiFi: connected  IP=%s  RSSI=%d\n",
+                      WiFi.localIP().toString().c_str(), WiFi.RSSI());
+        beepWifiUp();
+        if (gBuzzMode == BUZZ_WIFI_DISC) setBuzz(BUZZ_OFF);
+        gWifiDownSince = 0;
+    }
+
+    // ── WiFi / BLE disconnect alarms ─────────────────────────────────────────
+    if (WiFi.status() != WL_CONNECTED) {
+        // Auto-reconnect handles the actual retry in the background — we
+        // don't call connectWifi() again here (that would re-trigger the
+        // long blocking setup). Just track downtime + alarm and skip the
+        // HTTP work for this loop iteration.
+        if (!gWifiDownSince) gWifiDownSince = now;
+        if (now - gWifiDownSince > 10000 && gBuzzMode == BUZZ_OFF) {
+            setBuzz(BUZZ_WIFI_DISC);
+        }
+        delay(200);   // short yield, not the old 2-second blocker
+        return;
+    }
+    // (WiFi up: alarm clearing is handled when gWifiUpEvent fires.)
+
+    // BLE-printer disconnect alarm — only matters if we believe we should be
+    // connected (we've successfully scanned/connected at least once). Tracked
+    // via gBleConnected.
+    if (!gBleConnected) {
+        if (!gBleDownSince) gBleDownSince = now;
+        if (now - gBleDownSince > 30000 && gBuzzMode == BUZZ_OFF) {
+            setBuzz(BUZZ_BLE_DISC);
+        }
+    } else {
+        if (gBleDownSince) {
+            gBleDownSince = 0;
+            if (gBuzzMode == BUZZ_BLE_DISC) setBuzz(BUZZ_OFF);
+        }
     }
 
     // Keep BLE pre-connected so jobs print immediately. Throttle reconnect
     // attempts so we don't hammer the radio if the printer is off.
-    uint32_t now = millis();
     if (!gBleConnected && now >= gNextBleRetry &&
         now - gLastBleCheck >= 5000) {
         gLastBleCheck = now;
         if (!connectPrinter()) gNextBleRetry = millis() + 5000;
     }
 
-    // processJob() blocks for ~25s on a long-poll when idle, so no extra delay
+    // processJob() blocks for ~10s on a long-poll when idle, so no extra delay
     // is needed between iterations — we already throttle naturally.
     bool worked = processJob();
     // Refresh BLE status characteristic so any admin currently connected via
