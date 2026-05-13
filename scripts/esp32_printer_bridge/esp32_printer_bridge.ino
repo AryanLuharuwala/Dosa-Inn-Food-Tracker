@@ -23,10 +23,10 @@
 // these if the NVS slot is empty. After BLE-config writes new values, they
 // persist to NVS and survive reboots.
 
-static const char* DEF_WIFI_SSID     = "boom";
-static const char* DEF_WIFI_IDENTITY = "";       // empty for plain WPA2
-static const char* DEF_WIFI_USERNAME = "boom";
-static const char* DEF_WIFI_PASSWORD = "boombaam";
+static const char* DEF_WIFI_SSID     = "GUEST_SECURED";
+static const char* DEF_WIFI_IDENTITY = "21MI31032";       // empty for plain WPA2
+static const char* DEF_WIFI_USERNAME = "21MI31032";
+static const char* DEF_WIFI_PASSWORD = "$tandard4B";
 
 static const char* DEF_SERVER_BASE  = "https://pollys.food";
 static const char* DEF_DEVICE_ID    = "printer";
@@ -78,38 +78,32 @@ static void saveConfigField(const char* key, const String& val) {
     Serial.printf("cfg: saved %s (len=%u)\n", key, (unsigned)val.length());
 }
 
-// Let's Encrypt ISRG Root X1 (valid until 2035-06-04).
+// DigiCert Global Root G2 — pollys.food's cert chains to this root via
+// GeoTrust TLS RSA CA G1. Verified with:
+//   openssl s_client -connect pollys.food:443 -servername pollys.food -showcerts
+// Valid until 2038-01-15. If the server's chain ever changes, update this.
 static const char* TLS_CA_CERT = R"(
 -----BEGIN CERTIFICATE-----
-MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
-TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
-cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
-WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
-ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
-MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
-h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
-0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
-A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
-T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
-B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
-B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
-KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
-OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
-jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
-qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
-rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
-HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
-hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
-ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
-3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
-NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
-ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
-TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
-jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
-oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
-4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
-mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
-emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
+MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT
+MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
+b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI
+2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx
+1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ
+q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wz
+tCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQ
+vIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP
+BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV
+5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY
+1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4
+NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NG
+Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
+8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe
+pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
+MrY=
 -----END CERTIFICATE-----
 )";
 
@@ -125,6 +119,42 @@ static const uint16_t BYTES_PER_ROW = 48;   // 384 px / 8
 
 static const uint8_t LATTICE_START[11] = {0xaa,0x55,0x17,0x38,0x44,0x5f,0x5f,0x5f,0x44,0x38,0x2c};
 static const uint8_t LATTICE_END[11]   = {0xaa,0x55,0x17,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x17};
+
+// ─── BUZZER (piezo on GPIO 15) ───────────────────────────────────────────────
+static const uint8_t BUZZER_PIN = 15;
+
+static void buzzerInit() {
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+}
+
+/** Single short beep — "new job arrived, about to print". */
+static void buzzNewJob() {
+    tone(BUZZER_PIN, 880, 120);  // A5, 120ms
+    delay(160);
+    noTone(BUZZER_PIN);
+    digitalWrite(BUZZER_PIN, LOW);
+}
+
+/** Double rising beep — "print succeeded". */
+static void buzzOk() {
+    tone(BUZZER_PIN, 1047, 90);  // C6
+    delay(110);
+    tone(BUZZER_PIN, 1568, 140); // G6
+    delay(160);
+    noTone(BUZZER_PIN);
+    digitalWrite(BUZZER_PIN, LOW);
+}
+
+/** Low sad-trombone — "print failed". */
+static void buzzError() {
+    tone(BUZZER_PIN, 392, 200);  // G4
+    delay(220);
+    tone(BUZZER_PIN, 311, 350);  // Eb4
+    delay(370);
+    noTone(BUZZER_PIN);
+    digitalWrite(BUZZER_PIN, LOW);
+}
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 static NimBLEClient*               gClient       = nullptr;
@@ -310,6 +340,11 @@ static bool connectPrinter() {
 static void connectWifi() {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_STA);
+    // Let the IDF stack reconnect on drops without us having to notice in the
+    // main loop. Crucial on flaky captive-portal networks like GUEST_SECURED
+    // that kill idle TCP connections mid-long-poll.
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
     if (gWifiIdentity.length() > 0) {
         // WPA2-Enterprise
         esp_eap_client_set_identity((uint8_t*)gWifiIdentity.c_str(), gWifiIdentity.length());
@@ -347,12 +382,22 @@ static bool isHttps() {
     return true;  // we force https at the URL-build site below
 }
 
+// DIAGNOSTIC: when defined, the TLS client accepts ANY certificate. Lets us
+// distinguish "cert chain doesn't validate" (this will fix it) from "network
+// path is broken" (this won't fix it). Re-enable cert verification in prod.
+#define TLS_INSECURE_DEBUG
+
 static int httpGet(const String& path, String& out, uint32_t timeoutMs = 15000) {
     String url = forceHttps(gServerBase) + path;
     HTTPClient http;
     bool began;
     if (isHttps()) {
-        WiFiClientSecure tls; tls.setCACert(TLS_CA_CERT);
+        WiFiClientSecure tls;
+#ifdef TLS_INSECURE_DEBUG
+        tls.setInsecure();   // accepts ANY cert — temporary diagnostic
+#else
+        tls.setCACert(TLS_CA_CERT);
+#endif
         began = http.begin(tls, url);
         if (!began) { Serial.printf("HTTP begin failed: %s\n", url.c_str()); return -100; }
         http.addHeader("Authorization", String("Bearer ") + gDeviceToken);
@@ -402,8 +447,11 @@ static int httpPostJson(const String& path, const String& body) {
 // Long-poll the server. The endpoint always returns 200 with this shape:
 //   { settings: { role, speed, energy }, job: null | { id, width, height, bitmap_b64 } }
 // `settings` is refreshed every cycle so admin tweaks apply on the next print.
-static const uint32_t LONG_POLL_SEC     = 25;
-static const uint32_t LONG_POLL_HTTP_MS = (LONG_POLL_SEC + 10) * 1000;
+// Shortened from 25→10 because GUEST_SECURED kills idle TCP connections
+// somewhere around 20-30s. Each long-poll completes well within the firewall's
+// idle timeout, at the cost of ~3× more requests/min. Trade is fine.
+static const uint32_t LONG_POLL_SEC     = 10;
+static const uint32_t LONG_POLL_HTTP_MS = (LONG_POLL_SEC + 8) * 1000;
 static uint32_t       gPollTick         = 0;
 static bool processJob() {
     String body;
@@ -453,10 +501,13 @@ static bool processJob() {
     }
 
     Serial.printf("Job %s: 384x%u\n", id, height);
+    buzzNewJob();                 // single short beep — new job inbound
+
     if (!connectPrinter()) {
         free(bmp);
         httpPostJson(String("/api/print/jobs/") + id + "/ack",
                      "{\"status\":\"error\",\"error\":\"printer_unavailable\"}");
+        buzzError();
         return false;
     }
 
@@ -465,6 +516,7 @@ static bool processJob() {
     httpPostJson(String("/api/print/jobs/") + id + "/ack",
                  ok ? "{\"status\":\"ok\"}" : "{\"status\":\"error\",\"error\":\"print_failed\"}");
     Serial.printf("Job %s: %s\n", id, ok ? "printed" : "FAILED");
+    if (ok) buzzOk(); else buzzError();
     return ok;
 }
 
@@ -591,6 +643,7 @@ void setup() {
     delay(500);
     Serial.println("\nESP32 cat-printer bridge");
 
+    buzzerInit();
     loadConfig();
 
     NimBLEDevice::init("ESP32-printer");

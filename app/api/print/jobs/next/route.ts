@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDeviceToken, deviceRateLimited } from '@/lib/printer/auth';
-import { claimNextJob, updateDeviceLastSeen, getDeviceSettings } from '@/lib/printer/printerDb';
+import { claimNextJob, getDeviceSettings } from '@/lib/printer/printerDb';
 import { FEED_LINES } from '@/lib/printer/types';
 
 // Long-polling endpoint. With ?wait=<seconds> (0..30) the request blocks on
@@ -27,12 +27,15 @@ export async function GET(req: NextRequest) {
 
     const settings = await getDeviceSettings(auth.deviceId);
 
+    // `requireDeviceToken` above already updated last_seen_at once for this
+    // request, which is enough — the 120s UI threshold in useEspPrinterStatus
+    // gracefully spans the whole 25s long-poll plus the next request, so we
+    // don't need per-second writes during the wait loop.
     const deadline = Date.now() + waitSec * 1000;
     let job = await claimNextJob(auth.deviceId);
     while (!job && Date.now() < deadline) {
         if (req.signal?.aborted) return new NextResponse(null, { status: 499 });
         await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-        await updateDeviceLastSeen(auth.deviceId).catch(() => {});
         job = await claimNextJob(auth.deviceId);
     }
 
