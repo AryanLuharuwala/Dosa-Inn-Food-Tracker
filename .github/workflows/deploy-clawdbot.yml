@@ -1,0 +1,14 @@
+name: Deploy to clawdbot (pollys.food)
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+concurrency:
+  group: clawdbot-pollys
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: [ self-hosted, linux, dosa ]
+    steps:
+      - name: Build and restart pollys.food
+        run: bash $HOME/deploy-dosa.sh

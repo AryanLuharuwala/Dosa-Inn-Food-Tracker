@@ -40,9 +40,11 @@ export async function getDb(): Promise<Db> {
         }
         console.log(`[db] connecting to MongoDB, db=${dbName}, uri host=${uri.replace(/\/\/[^@]+@/, '//***@').split('?')[0]}`);
 
+        // Local MongoDB has no TLS; hosted Cosmos requires it. Detect localhost
+        // (or MONGO_TLS=false) and skip TLS so the same code works for both.
+        const isLocalMongo = /(localhost|127\.0\.0\.1)/.test(uri) || process.env.MONGO_TLS === 'false';
         const client = new MongoClient(uri, {
-            tls: true,
-            tlsAllowInvalidCertificates: false,
+            ...(isLocalMongo ? {} : { tls: true, tlsAllowInvalidCertificates: false }),
             retryWrites: false,
             maxPoolSize: 10,
             connectTimeoutMS: 10_000,
