@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Rocky Da Adda Admin</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #1a4d2e;
+    color: #f8f6f1;
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-app-region: drag;
+  }
+  .wrap {
+    text-align: center;
+  }
+  .spinner {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 16px;
+    border: 3px solid rgba(248, 246, 241, 0.25);
+    border-top-color: #7cb342;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  p {
+    margin: 0;
+    font-size: 14px;
+    opacity: 0.85;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="spinner"></div>
+    <p>Starting Rocky Da Adda server…</p>
+  </div>
+</body>
+</html>

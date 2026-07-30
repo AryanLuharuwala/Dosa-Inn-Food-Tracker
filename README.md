@@ -203,7 +203,18 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 .\install.ps1
 ```
 
-Or just double-click `start.bat` after the initial install.
+After the initial install, use these to manage the server:
+
+- Double-click `start.bat` to start it
+- Double-click `stop.bat` to stop it
+- Double-click `restart.bat` to restart it (e.g. after pulling code updates)
+
+### Desktop icon for the admin panel
+
+`electron-admin/` wraps the admin panel in a small Windows desktop app — a normal
+double-clickable icon that starts the server automatically, opens straight to `/admin`,
+and lives in the system tray when closed. See `electron-admin/README.md` to build the
+installer.
 
 ---
 
@@ -255,7 +266,8 @@ Or just double-click `start.bat` after the initial install.
 ├── ecosystem.config.js        # pm2 process config
 ├── install.sh                 # Linux self-installer
 ├── install.ps1                # Windows self-installer
-└── start.bat                  # Windows quick-start
+├── start.bat / stop.bat / restart.bat   # Windows quick start/stop/restart
+└── electron-admin/            # Desktop app wrapping /admin with a system tray icon
 ```
 
 ---
