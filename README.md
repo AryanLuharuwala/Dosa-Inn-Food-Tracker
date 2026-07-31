@@ -228,6 +228,16 @@ logged in, the same one pm2 runs in). See the comments at the top of
 `setup-auto-deploy.ps1` for what you'll need (a runner registration token from the
 repo's GitHub settings).
 
+### Public domain via Cloudflare Tunnel (optional)
+
+Run `.\setup-cloudflare-tunnel.ps1` **as Administrator**, once the app is confirmed
+working locally, to route `pollys.food` and `www.pollys.food` straight to this
+machine's port 3000 — no router port-forwarding needed. It installs `cloudflared` as a
+Windows service and walks through the one-time Cloudflare login (opens a browser).
+**This overwrites the existing DNS records for those hostnames**, so only run it once
+this machine is ready to actually serve production traffic. See the comments at the
+top of `setup-cloudflare-tunnel.ps1` for details.
+
 ---
 
 ## Project Structure
