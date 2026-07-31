@@ -399,11 +399,14 @@ export default function AdminPage() {
                 for (const order of newOrders) {
                     // Always enqueue once on the server — the ESP bridge will
                     // pick it up via long-poll regardless of whether this tab
-                    // is paired over BLE.
+                    // is paired over BLE. order_add already does this same
+                    // enqueue unconditionally server-side; `auto: true` shares
+                    // its dedup key so whichever of the two reaches the server
+                    // first wins and the other is a no-op, not a duplicate KOT.
                     fetch('/api/print/jobs', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ orderId: order.orderId, kind: 'kot', copies: kotCopies }),
+                        body: JSON.stringify({ orderId: order.orderId, kind: 'kot', copies: kotCopies, auto: true }),
                     }).catch(() => {});
                     // Also fire over BLE if this tab is paired — gives same-room
                     // printer the fastest path. The BLE client serializes writes
@@ -697,102 +700,12 @@ export default function AdminPage() {
                         <img src="/logo.png" alt={restaurantName} className={styles.logo} />
                     </Link>
                     <span className={styles.adminBadge}>Admin</span>
-                    <Link href="/kitchen" className={styles.adminBadge} style={{ backgroundColor: '#ff9800', cursor: 'pointer' }}>
-                        🍳 Kitchen
-                    </Link>
-                    <Link href="/cook" className={styles.adminBadge} style={{ backgroundColor: '#111827', color: '#f59e0b', border: '1.5px solid #f59e0b', cursor: 'pointer' }}>
-                        🔥 Cook
-                    </Link>
                 </div>
                 <div className={styles.rushHourToggle}>
+                    {/* Subpage links (Kitchen/Cook/Pricing/Analytics/Bill Editor/
+                        Sessions/Debug/Printers) moved to the site-wide sidebar —
+                        open it via the hamburger button instead of this strip. */}
                     <PrinterHeaderButton />
-                    <Link href="/admin/pricing" style={{
-                        marginRight: '8px',
-                        padding: '6px 12px',
-                        backgroundColor: '#5F259F',
-                        color: 'white',
-                        borderRadius: '6px',
-                        textDecoration: 'none',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                    }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="currentColor" stroke="none" />
-                        </svg>
-                        Pricing
-                    </Link>
-                    <Link href="/admin/analytics" className={styles.analyticsBtn} style={{
-                        padding: '6px 12px',
-                        backgroundColor: 'var(--color-primary)',
-                        color: 'white',
-                        borderRadius: '6px',
-                        textDecoration: 'none',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                    }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 20V10M12 20V4M6 20v-6" />
-                        </svg>
-                        Analytics
-                    </Link>
-                    <Link href="/admin/bill-editor" style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#c2410c',
-                        color: 'white',
-                        borderRadius: '6px',
-                        textDecoration: 'none',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                    }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
-                        </svg>
-                        Bill Editor
-                    </Link>
-                    <Link href="/admin/sessions" style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#1e3a5f',
-                        color: 'white',
-                        borderRadius: '6px',
-                        textDecoration: 'none',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                    }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2M12 12v3"/>
-                        </svg>
-                        Sessions
-                    </Link>
-                    <Link href="/admin/print-devices" style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#0f766e',
-                        color: 'white',
-                        borderRadius: '6px',
-                        textDecoration: 'none',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        marginRight: '15px',
-                    }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
-                        </svg>
-                        Printers
-                    </Link>
 
                     <span className={rushHourMode ? styles.rushActive : ''}>
                         {rushHourMode ? '🔥 Rush Hour ON' : 'Rush Hour'}

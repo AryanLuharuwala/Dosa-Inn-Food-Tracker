@@ -44,6 +44,11 @@ export default function CartPage() {
         }
     }, [tableNumber, orderType, preorderDetails, router]);
 
+    // Checkout is the primary forward step from here — warm it ahead of the click.
+    useEffect(() => {
+        router.prefetch('/checkout');
+    }, [router]);
+
     const handleQuantityChange = (cartItemId: string, newQuantity: number) => {
         if (newQuantity < 1) {
             removeItem(cartItemId);

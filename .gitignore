@@ -40,11 +40,25 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/whatsapp-service/.wwebjs*
 /whatsapp-service/node_modules
-/whatsapp-service/package*
+/whatsapp-service/.baileys_auth/
 
 # uploaded images live in Azure Blob Storage, not in the repo
 /public/uploads/
 # Cloned cat-printer reference repo (protocol research only)
 /cat-printer/
+
+# SQLite data file — a local runtime store, not source
+/data/app.db
+/data/app.db-shm
+/data/app.db-wal
+
+# Debug probe artifacts
+/probe.jsonl
+/website.jsonl
+
+# pm2 logs
+/logs/
+
+# Unrelated nested project (has its own git repo)
+/Snova/

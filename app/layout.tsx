@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
+import SiteSidebar from "@/components/nav/SiteSidebar";
+import { SidebarProvider } from "@/components/nav/SidebarContext";
 
 export const metadata: Metadata = {
   title: "Rocky Da Adda | 100% Pure Veg Campus Restaurant",
@@ -35,7 +37,10 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
-          {children}
+          <SidebarProvider>
+            <SiteSidebar />
+            {children}
+          </SidebarProvider>
         </Providers>
       </body>
     </html>

@@ -31,6 +31,11 @@ export default function MenuPage() {
         }
     }, [tableNumber, orderType, preorderDetails, router]);
 
+    // Cart is the near-universal next stop from here — warm it ahead of the click.
+    useEffect(() => {
+        router.prefetch('/cart');
+    }, [router]);
+
     const handleItemClick = (item: MenuItem) => {
         if (!item.isAvailable) return;
         setSelectedItem(item);

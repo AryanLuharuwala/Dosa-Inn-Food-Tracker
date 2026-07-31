@@ -26,6 +26,11 @@ export default function TablePage() {
         assignToken();
     }, []);
 
+    // Every visitor here is headed to /menu next — warm it ahead of the click.
+    useEffect(() => {
+        router.prefetch('/menu');
+    }, [router]);
+
     const handleContinue = () => {
         if (!table) return;
 

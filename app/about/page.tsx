@@ -2,7 +2,7 @@ import { getSettings } from '@/lib/localDb';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-// Never statically pre-render — MONGO_URL is only available at runtime
+// Never statically pre-render — settings can change at runtime via the admin panel
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata(): Promise<Metadata> {

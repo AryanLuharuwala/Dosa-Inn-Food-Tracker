@@ -236,6 +236,21 @@ function ReceiptPreview({ template, restaurantName, tagline }: {
                 {template.footer.footerNote && (
                     <div className={styles.previewFooterNote}>{template.footer.footerNote}</div>
                 )}
+                {template.footer.contactLine && (
+                    <div className={styles.previewFooterNote}>{template.footer.contactLine}</div>
+                )}
+                {template.footer.trackOrderQr && (
+                    <div className={styles.previewQr}>
+                        <img
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`/track-order?orderId=${order.orderId}`)}`}
+                            alt="Track-order QR Code"
+                            width={80}
+                            height={80}
+                            style={{ objectFit: 'contain' }}
+                        />
+                        <div className={styles.previewQrLabel}>Scan to track your order</div>
+                    </div>
+                )}
 
                 <div className={styles.previewTear} />
             </div>
@@ -245,19 +260,31 @@ function ReceiptPreview({ template, restaurantName, tagline }: {
 
 // ── Main Editor ───────────────────────────────────────────────────────────────
 
+// Merges section-by-section, not a flat spread — a template saved before a
+// new field (e.g. footer.trackOrderQr) existed would otherwise have that
+// whole section replaced wholesale, leaving the new field undefined instead
+// of defaulted.
+function mergeBillTemplate(saved: Partial<BillTemplate> | undefined | null): BillTemplate {
+    return {
+        header: { ...DEFAULT_BILL_TEMPLATE.header, ...saved?.header },
+        orderInfo: { ...DEFAULT_BILL_TEMPLATE.orderInfo, ...saved?.orderInfo },
+        items: { ...DEFAULT_BILL_TEMPLATE.items, ...saved?.items },
+        total: { ...DEFAULT_BILL_TEMPLATE.total, ...saved?.total },
+        footer: { ...DEFAULT_BILL_TEMPLATE.footer, ...saved?.footer },
+        watermark: { ...DEFAULT_BILL_TEMPLATE.watermark, ...saved?.watermark },
+    };
+}
+
 export default function BillEditorPage() {
     const { restaurantName, tagline, billTemplate: savedTemplate, saveBillTemplate } = useMenu();
-    const [template, setTemplate] = useState<BillTemplate>(() => ({
-        ...DEFAULT_BILL_TEMPLATE,
-        ...savedTemplate,
-    }));
+    const [template, setTemplate] = useState<BillTemplate>(() => mergeBillTemplate(savedTemplate));
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // React to saved template loading from server (first render has defaults)
     React.useEffect(() => {
-        setTemplate(prev => ({ ...DEFAULT_BILL_TEMPLATE, ...savedTemplate }));
+        setTemplate(mergeBillTemplate(savedTemplate));
     }, [savedTemplate]);
 
     const set = useCallback(<K extends keyof BillTemplate>(section: K, updates: Partial<BillTemplate[K]>) => {
@@ -470,6 +497,15 @@ export default function BillEditorPage() {
                                 onChange={e => set('footer', { footerNote: e.target.value })}
                             />
                         </Row>
+                        <Row label="Contact Line">
+                            <input
+                                className={styles.textInput}
+                                type="text"
+                                placeholder="e.g. 98765 43210 · @rockydaadda"
+                                value={template.footer.contactLine}
+                                onChange={e => set('footer', { contactLine: e.target.value })}
+                            />
+                        </Row>
                         <Row label="Show QR Code">
                             <Toggle checked={template.footer.showQrCode} onChange={v => set('footer', { showQrCode: v })} />
                         </Row>
@@ -495,11 +531,17 @@ export default function BillEditorPage() {
                                 </Row>
                             </>
                         )}
+                        <Row label="Track-Order QR">
+                            <Toggle checked={template.footer.trackOrderQr} onChange={v => set('footer', { trackOrderQr: v })} />
+                        </Row>
+                        {template.footer.trackOrderQr && (
+                            <p className={styles.sectionNote}>Prints a second QR linking to this order's live status page — separate from the payment QR above.</p>
+                        )}
                     </Section>
 
-                    <Section title="Watermark / Underlay" icon="🌊">
+                    <Section title="Watermark" icon="🌊">
                         <p className={styles.sectionNote}>
-                            Prints a large faint text behind the bill — e.g. restaurant name, tagline, or a pattern.
+                            Prints an extra centered line near the bottom — e.g. a tagline, promo code, or slogan.
                         </p>
                         <Row label="Enable Watermark">
                             <Toggle checked={template.watermark.enabled} onChange={v => set('watermark', { enabled: v })} />

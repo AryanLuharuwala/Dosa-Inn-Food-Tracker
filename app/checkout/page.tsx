@@ -31,6 +31,7 @@ function CheckoutPageInner() {
     const [error, setError] = useState('');
     const [fullBillCart, setFullBillCart] = useState<SharedCart | null>(null);
     const [whatsappPhone, setWhatsappPhone] = useState('');
+    const [marketingOptIn, setMarketingOptIn] = useState(false);
     const orderCompleted = useRef(false);
 
     // Load full shared cart when paying full bill
@@ -46,6 +47,14 @@ function CheckoutPageInner() {
             router.push('/menu');
         }
     }, [items, extras, router]);
+
+    // Counter-payment orders land here immediately on success — warm it
+    // ahead of the click. (Online-payment orders leave the app entirely for
+    // Cashfree's checkout and return via a fresh page load, so prefetching
+    // /payment-result from here wouldn't help that leg.)
+    useEffect(() => {
+        router.prefetch('/order-confirmed');
+    }, [router]);
 
     // For full bill: aggregate all participants' items
     const billItems = payMode === 'full' && fullBillCart
@@ -318,6 +327,30 @@ function CheckoutPageInner() {
                                     maxLength={10}
                                 />
                             </div>
+                            {whatsappPhone.length === 10 && (
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.85rem', color: '#666', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={marketingOptIn}
+                                        onChange={e => {
+                                            const checked = e.target.checked;
+                                            setMarketingOptIn(checked);
+                                            // Consent is independent of whether this particular
+                                            // order succeeds — fire immediately rather than
+                                            // threading it through every order-completion path
+                                            // (counter-pay here, online-pay via payment-result).
+                                            if (checked) {
+                                                fetch('/api/marketing/subscribe', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ phone: whatsappPhone }),
+                                                }).catch(() => {});
+                                            }
+                                        }}
+                                    />
+                                    Also send me occasional offers &amp; updates on WhatsApp
+                                </label>
+                            )}
                         </div>
                     )}
 

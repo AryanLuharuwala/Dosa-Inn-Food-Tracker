@@ -1,16 +1,20 @@
 /**
- * Database layer — Azure Cosmos DB for MongoDB.
+ * Database layer — local SQLite (better-sqlite3).
  * All data access goes through this module (server-side only).
  */
 
 import { getDb } from './db';
 import { menuItems as seedMenuItems, categories as seedCategories } from './menuData';
 
+function nowIso(): string {
+    return new Date().toISOString();
+}
+
 // ── Analytics ──────────────────────────────────────────────────────────────────
 
 async function appendLog(logType: string, entry: Record<string, unknown>) {
-    const db = await getDb();
-    await db.collection('analytics_logs').insertOne({ logType, ...entry, ts: new Date() });
+    const db = getDb();
+    db.prepare('INSERT INTO analytics_logs (log_type, ts, data) VALUES (?, ?, ?)').run(logType, nowIso(), JSON.stringify(entry));
 }
 
 export async function logPayment(entry: Record<string, unknown>) { await appendLog('payment', entry); }
@@ -21,8 +25,9 @@ export async function logCartAbandonment(entry: Record<string, unknown>) { await
 // ── Menu items ─────────────────────────────────────────────────────────────────
 
 export async function getMenuItems() {
-    const db = await getDb();
-    const docs = await db.collection('menu_items').find({}).toArray();
+    const db = getDb();
+    const rows = db.prepare('SELECT data FROM menu_items').all() as { data: string }[];
+    const docs = rows.map(r => JSON.parse(r.data) as Record<string, unknown>);
 
     if (docs.length === 0) {
         await seedMenuItemsToDb();
@@ -39,8 +44,8 @@ export async function getMenuItems() {
     }
 
     docs.sort((a, b) => {
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        const ta = a.createdAt ? new Date(a.createdAt as string).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt as string).getTime() : 0;
         return ta - tb;
     });
 
@@ -69,7 +74,7 @@ export async function getMenuItems() {
         }
 
         return {
-            id: String(d._id ?? d.id),
+            id: String(d.id),
             name: d.name as string,
             description: d.description as string,
             price: d.price as number,
@@ -91,14 +96,15 @@ export async function getMenuItems() {
  * arrays. Group names are derived from the item's category to keep them readable.
  */
 async function migrateInlineModifiersToGroups() {
-    const db = await getDb();
-    const items = await db.collection('menu_items').find({}).toArray();
+    const db = getDb();
+    const rows = db.prepare('SELECT id, data FROM menu_items').all() as { id: string; data: string }[];
+    const items: (Record<string, unknown> & { id: string })[] = rows.map(r => ({ id: r.id, ...(JSON.parse(r.data) as Record<string, unknown>) }));
     const cats = await getCategories();
     const catName = new Map(cats.map(c => [c.id, c.name]));
 
     // signature -> { id, type, name, modifiers }
     const groupBySig = new Map<string, ModifierGroup>();
-    const itemUpdates: Array<{ _id: unknown; groupIds: string[] }> = [];
+    const itemUpdates: Array<{ id: string; groupIds: string[] }> = [];
 
     function sig(arr: Modifier[]): string {
         return JSON.stringify([...arr].sort((a, b) => a.id.localeCompare(b.id)).map(m => ({ id: m.id, name: m.name, price: m.price })));
@@ -128,7 +134,7 @@ async function migrateInlineModifiersToGroups() {
         const inlineExtras = ((item.extras as Modifier[]) ?? []).filter(m => m && m.id);
         if (!inlineAddOns.length && !inlineExtras.length) {
             // Mark as migrated with empty array so we don't re-check
-            itemUpdates.push({ _id: item._id, groupIds: [] });
+            itemUpdates.push({ id: item.id, groupIds: [] });
             continue;
         }
         const ids: string[] = [];
@@ -136,7 +142,7 @@ async function migrateInlineModifiersToGroups() {
         const extraId = ensureGroup(inlineExtras, 'extra', item.categoryId as string);
         if (addOnId) ids.push(addOnId);
         if (extraId) ids.push(extraId);
-        itemUpdates.push({ _id: item._id, groupIds: ids });
+        itemUpdates.push({ id: item.id, groupIds: ids });
     }
 
     // Persist groups
@@ -144,53 +150,61 @@ async function migrateInlineModifiersToGroups() {
         await upsertModifierGroup(g);
     }
     // Update items: set modifierGroupIds, clear inline arrays
+    const getRow = db.prepare('SELECT data FROM menu_items WHERE id = ?');
+    const update = db.prepare('UPDATE menu_items SET data = ? WHERE id = ?');
     for (const u of itemUpdates) {
-        await db.collection('menu_items').updateOne(
-            { _id: u._id as import('mongodb').ObjectId },
-            { $set: { modifierGroupIds: u.groupIds, addOns: [], extras: [], migratedAt: new Date() } }
-        );
+        const row = getRow.get(u.id) as { data: string } | undefined;
+        if (!row) continue;
+        const doc = JSON.parse(row.data);
+        doc.modifierGroupIds = u.groupIds;
+        doc.addOns = [];
+        doc.extras = [];
+        doc.migratedAt = nowIso();
+        update.run(JSON.stringify(doc), u.id);
     }
 }
 
 async function seedMenuItemsToDb() {
-    const db = await getDb();
-    const col = db.collection('menu_items');
+    const db = getDb();
+    const insert = db.prepare('INSERT OR IGNORE INTO menu_items (id, created_at, data) VALUES (?, ?, ?)');
+    const now = nowIso();
     for (const item of seedMenuItems as unknown as Record<string, unknown>[]) {
-        await col.updateOne(
-            { _id: item.id as import('mongodb').ObjectId },
-            { $setOnInsert: { _id: item.id, ...item, createdAt: new Date() } },
-            { upsert: true }
-        );
+        insert.run(item.id as string, now, JSON.stringify({ ...item, createdAt: now }));
     }
 }
 
 export async function saveMenuItems(items: unknown[]) {
-    const db = await getDb();
-    const col = db.collection('menu_items');
+    const db = getDb();
+    const get = db.prepare('SELECT data FROM menu_items WHERE id = ?');
+    const upsert = db.prepare('INSERT INTO menu_items (id, created_at, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data');
     for (const _item of items) {
         const item = _item as Record<string, unknown>;
-        await col.updateOne(
-            { _id: item.id as import('mongodb').ObjectId },
-            { $set: { ...item, updatedAt: new Date() }, $setOnInsert: { _id: item.id, createdAt: new Date() } },
-            { upsert: true }
-        );
+        const id = item.id as string;
+        const existing = get.get(id) as { data: string } | undefined;
+        const now = nowIso();
+        const createdAt = existing ? ((JSON.parse(existing.data).createdAt as string) ?? now) : now;
+        const merged = existing
+            ? { ...JSON.parse(existing.data), ...item, updatedAt: now }
+            : { ...item, createdAt, updatedAt: now };
+        upsert.run(id, createdAt, JSON.stringify(merged));
     }
 }
 
 export async function updateMenuItemFields(id: string, updates: Record<string, unknown>) {
-    const db = await getDb();
-    const res = await db.collection('menu_items').updateOne(
-        { $or: [{ _id: id as unknown as import('mongodb').ObjectId }, { id }] },
-        { $set: { ...updates, updatedAt: new Date() } }
-    );
-    console.log(`[updateMenuItemFields] id=${id} matched=${res.matchedCount} modified=${res.modifiedCount}`);
+    const db = getDb();
+    const row = db.prepare('SELECT data FROM menu_items WHERE id = ?').get(id) as { data: string } | undefined;
+    if (!row) {
+        console.log(`[updateMenuItemFields] id=${id} matched=0 modified=0`);
+        return;
+    }
+    const doc = { ...JSON.parse(row.data), ...updates, updatedAt: nowIso() };
+    db.prepare('UPDATE menu_items SET data = ? WHERE id = ?').run(JSON.stringify(doc), id);
+    console.log(`[updateMenuItemFields] id=${id} matched=1 modified=1`);
 }
 
 export async function deleteMenuItemById(id: string) {
-    const db = await getDb();
-    await db.collection('menu_items').deleteOne({
-        $or: [{ _id: id as unknown as import('mongodb').ObjectId }, { id }],
-    });
+    const db = getDb();
+    db.prepare('DELETE FROM menu_items WHERE id = ?').run(id);
 }
 
 // ── Modifier Groups (shared add-ons & extras) ─────────────────────────────────
@@ -209,45 +223,50 @@ export interface ModifierGroup {
 }
 
 export async function getModifierGroups(): Promise<ModifierGroup[]> {
-    const db = await getDb();
-    const docs = await db.collection('modifier_groups').find({}).toArray();
-    return docs.map(d => ({
-        id: String(d._id ?? d.id),
-        name: d.name as string,
-        type: d.type as 'addOn' | 'extra',
-        modifiers: (d.modifiers as Modifier[]) ?? [],
-    }));
+    const db = getDb();
+    const rows = db.prepare('SELECT data FROM modifier_groups').all() as { data: string }[];
+    return rows.map(r => {
+        const d = JSON.parse(r.data);
+        return {
+            id: d.id as string,
+            name: d.name as string,
+            type: d.type as 'addOn' | 'extra',
+            modifiers: (d.modifiers as Modifier[]) ?? [],
+        };
+    });
 }
 
 export async function upsertModifierGroup(group: ModifierGroup) {
-    const db = await getDb();
-    await db.collection('modifier_groups').updateOne(
-        { _id: group.id as unknown as import('mongodb').ObjectId },
-        {
-            $set: { name: group.name, type: group.type, modifiers: group.modifiers, updatedAt: new Date() },
-            $setOnInsert: { _id: group.id, createdAt: new Date() },
-        },
-        { upsert: true }
-    );
+    const db = getDb();
+    const existing = db.prepare('SELECT data FROM modifier_groups WHERE id = ?').get(group.id) as { data: string } | undefined;
+    const now = nowIso();
+    const createdAt = existing ? ((JSON.parse(existing.data).createdAt as string) ?? now) : now;
+    const doc = { ...group, createdAt, updatedAt: now };
+    db.prepare('INSERT INTO modifier_groups (id, created_at, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data')
+        .run(group.id, createdAt, JSON.stringify(doc));
 }
 
 export async function deleteModifierGroupById(id: string) {
-    const db = await getDb();
-    await db.collection('modifier_groups').deleteOne({
-        $or: [{ _id: id as unknown as import('mongodb').ObjectId }, { id }],
-    });
+    const db = getDb();
+    db.prepare('DELETE FROM modifier_groups WHERE id = ?').run(id);
     // Also unlink from any items that referenced it
-    await db.collection('menu_items').updateMany(
-        { modifierGroupIds: id },
-        { $pull: { modifierGroupIds: id as unknown as never } }
-    );
+    const rows = db.prepare('SELECT id, data FROM menu_items').all() as { id: string; data: string }[];
+    const update = db.prepare('UPDATE menu_items SET data = ? WHERE id = ?');
+    for (const row of rows) {
+        const doc = JSON.parse(row.data);
+        if (Array.isArray(doc.modifierGroupIds) && doc.modifierGroupIds.includes(id)) {
+            doc.modifierGroupIds = doc.modifierGroupIds.filter((g: string) => g !== id);
+            update.run(JSON.stringify(doc), row.id);
+        }
+    }
 }
 
 // ── Categories ─────────────────────────────────────────────────────────────────
 
 export async function getCategories() {
-    const db = await getDb();
-    const docs = await db.collection('categories').find({}).toArray();
+    const db = getDb();
+    const rows = db.prepare('SELECT data FROM categories').all() as { data: string }[];
+    const docs = rows.map(r => JSON.parse(r.data) as Record<string, unknown>);
 
     if (docs.length === 0) {
         await seedCategoriesToDb();
@@ -258,13 +277,13 @@ export async function getCategories() {
         const sa = (a.sortOrder as number) ?? 0;
         const sb = (b.sortOrder as number) ?? 0;
         if (sa !== sb) return sa - sb;
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        const ta = a.createdAt ? new Date(a.createdAt as string).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt as string).getTime() : 0;
         return ta - tb;
     });
 
     return docs.map(d => ({
-        id: String(d._id ?? d.id),
+        id: String(d.id),
         name: d.name as string,
         tagline: d.tagline as string | undefined,
         icon: d.icon as string,
@@ -273,27 +292,28 @@ export async function getCategories() {
 }
 
 async function seedCategoriesToDb() {
-    const db = await getDb();
-    const col = db.collection('categories');
+    const db = getDb();
+    const insert = db.prepare('INSERT OR IGNORE INTO categories (id, created_at, data) VALUES (?, ?, ?)');
+    const now = nowIso();
     for (const cat of seedCategories as unknown as Record<string, unknown>[]) {
-        await col.updateOne(
-            { _id: cat.id as import('mongodb').ObjectId },
-            { $setOnInsert: { _id: cat.id, ...cat, createdAt: new Date() } },
-            { upsert: true }
-        );
+        insert.run(cat.id as string, now, JSON.stringify({ ...cat, createdAt: now }));
     }
 }
 
 export async function saveCategories(cats: unknown[]) {
-    const db = await getDb();
-    const col = db.collection('categories');
+    const db = getDb();
+    const get = db.prepare('SELECT data FROM categories WHERE id = ?');
+    const upsert = db.prepare('INSERT INTO categories (id, created_at, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data');
     for (const _cat of cats) {
         const cat = _cat as Record<string, unknown>;
-        await col.updateOne(
-            { _id: cat.id as import('mongodb').ObjectId },
-            { $set: { ...cat, updatedAt: new Date() }, $setOnInsert: { _id: cat.id, createdAt: new Date() } },
-            { upsert: true }
-        );
+        const id = cat.id as string;
+        const existing = get.get(id) as { data: string } | undefined;
+        const now = nowIso();
+        const createdAt = existing ? ((JSON.parse(existing.data).createdAt as string) ?? now) : now;
+        const merged = existing
+            ? { ...JSON.parse(existing.data), ...cat, updatedAt: now }
+            : { ...cat, createdAt, updatedAt: now };
+        upsert.run(id, createdAt, JSON.stringify(merged));
     }
 }
 
@@ -322,6 +342,9 @@ export interface Order {
     customerName?: string;
     /** 'online' = paid via PhonePe; 'counter' = pay-at-counter mode (no token verification). */
     paymentMethod?: 'online' | 'counter';
+    /** Stamped the moment status transitions to 'ready' — used by the
+     *  order_ready_uncollected automation rule to measure wait time. */
+    readyAt?: string;
 }
 
 function docToOrder(d: Record<string, unknown>): Order {
@@ -342,35 +365,37 @@ function docToOrder(d: Record<string, unknown>): Order {
         customerPhone: d.customerPhone as string | undefined,
         customerName: d.customerName as string | undefined,
         paymentMethod: d.paymentMethod as 'online' | 'counter' | undefined,
+        readyAt: d.readyAt as string | undefined,
     };
 }
 
 export async function findOrderByMerchantOrderId(merchantOrderId: string): Promise<Order | null> {
-    const db = await getDb();
-    const doc = await db.collection('orders').findOne({ merchantOrderId });
-    return doc ? docToOrder(doc as unknown as Record<string, unknown>) : null;
+    const db = getDb();
+    const row = db.prepare('SELECT data FROM orders WHERE merchant_order_id = ?').get(merchantOrderId) as { data: string } | undefined;
+    return row ? docToOrder(JSON.parse(row.data)) : null;
 }
 
 export async function getOrders(): Promise<Order[]> {
-    const db = await getDb();
-    const docs = await db.collection('orders').find({}).sort({ createdAt: -1 }).toArray();
-    return docs.map(d => docToOrder(d as unknown as Record<string, unknown>));
+    const db = getDb();
+    const rows = db.prepare('SELECT data FROM orders ORDER BY created_at DESC').all() as { data: string }[];
+    return rows.map(r => docToOrder(JSON.parse(r.data)));
 }
 
 export async function appendOrder(order: Order) {
-    const db = await getDb();
-    await db.collection('orders').updateOne(
-        { orderId: order.orderId },
-        { $setOnInsert: { ...order, createdAt: new Date() } },
-        { upsert: true }
-    );
+    const db = getDb();
+    const existing = db.prepare('SELECT 1 FROM orders WHERE order_id = ?').get(order.orderId);
+    if (!existing) {
+        const now = nowIso();
+        db.prepare('INSERT INTO orders (order_id, merchant_order_id, created_at, data) VALUES (?, ?, ?, ?)')
+            .run(order.orderId, order.merchantOrderId ?? null, now, JSON.stringify({ ...order, createdAt: now }));
+    }
     await logOrder({ event: 'order_placed', orderId: order.orderId, amount: order.totalAmount, items: order.items.length });
 }
 
 export async function deleteOrderById(orderId: string): Promise<boolean> {
-    const db = await getDb();
-    const res = await db.collection('orders').deleteOne({ orderId });
-    return res.deletedCount > 0;
+    const db = getDb();
+    const res = db.prepare('DELETE FROM orders WHERE order_id = ?').run(orderId);
+    return res.changes > 0;
 }
 
 export async function updateOrderStatus(
@@ -378,11 +403,15 @@ export async function updateOrderStatus(
     status: Order['status'],
     itemsPayload?: Order['items']
 ): Promise<boolean> {
-    const db = await getDb();
-    const update: Record<string, unknown> = { status };
-    if (itemsPayload) update.items = itemsPayload;
-    const res = await db.collection('orders').updateOne({ orderId }, { $set: update });
-    return res.matchedCount > 0;
+    const db = getDb();
+    const row = db.prepare('SELECT data FROM orders WHERE order_id = ?').get(orderId) as { data: string } | undefined;
+    if (!row) return false;
+    const doc = JSON.parse(row.data);
+    if (status === 'ready' && doc.status !== 'ready') doc.readyAt = nowIso();
+    doc.status = status;
+    if (itemsPayload) doc.items = itemsPayload;
+    db.prepare('UPDATE orders SET data = ? WHERE order_id = ?').run(JSON.stringify(doc), orderId);
+    return true;
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────
@@ -404,22 +433,28 @@ export interface Settings {
     autoPrintOrders?: boolean;
     /** Visual bill template configuration set via the bill editor. */
     billTemplate?: import('./billTemplate').BillTemplate;
+    /** Gates the WhatsApp inbound auto-reply/ordering flow. 'off' (default)
+     *  never responds to anyone; 'test_only' only responds to numbers in
+     *  DEBUG_TEST_PHONES; 'live' responds to any real inbound message. */
+    whatsappAutoReplyMode?: 'off' | 'test_only' | 'live';
 }
 
 export async function getSettings(): Promise<Settings> {
-    const db = await getDb();
-    const doc = await db.collection('settings').findOne({ _id: 'global' as unknown as import('mongodb').ObjectId });
+    const db = getDb();
+    const row = db.prepare('SELECT data FROM settings WHERE id = ?').get('global') as { data: string } | undefined;
+    const doc = row ? JSON.parse(row.data) as Record<string, unknown> : {};
     return {
-        rushHourMode: (doc?.rushHourMode as boolean) ?? false,
-        rushHourItems: (doc?.rushHourItems as string[]) ?? [],
-        restaurantName: (doc?.restaurantName as string) ?? 'Rocky Da Adda',
-        tagline: (doc?.tagline as string) ?? '100% Pure Veg',
-        legalName: (doc?.legalName as string) ?? '',
-        paymentsEnabled: (doc?.paymentsEnabled as boolean) ?? false,
-        kotCopies: clampCopies(doc?.kotCopies as number | undefined, 1),
-        billCopies: clampCopies(doc?.billCopies as number | undefined, 1),
-        autoPrintOrders: (doc?.autoPrintOrders as boolean) ?? false,
-        billTemplate: (doc?.billTemplate as import('./billTemplate').BillTemplate) ?? undefined,
+        rushHourMode: (doc.rushHourMode as boolean) ?? false,
+        rushHourItems: (doc.rushHourItems as string[]) ?? [],
+        restaurantName: (doc.restaurantName as string) ?? 'Rocky Da Adda',
+        tagline: (doc.tagline as string) ?? '100% Pure Veg',
+        legalName: (doc.legalName as string) ?? '',
+        paymentsEnabled: (doc.paymentsEnabled as boolean) ?? false,
+        kotCopies: clampCopies(doc.kotCopies as number | undefined, 1),
+        billCopies: clampCopies(doc.billCopies as number | undefined, 1),
+        autoPrintOrders: (doc.autoPrintOrders as boolean) ?? false,
+        billTemplate: (doc.billTemplate as import('./billTemplate').BillTemplate) ?? undefined,
+        whatsappAutoReplyMode: (doc.whatsappAutoReplyMode as Settings['whatsappAutoReplyMode']) ?? 'off',
     };
 }
 
@@ -429,12 +464,14 @@ function clampCopies(n: number | undefined, fallback: number): number {
 }
 
 export async function saveSettings(s: Settings) {
-    const db = await getDb();
-    await db.collection('settings').updateOne(
-        { _id: 'global' as unknown as import('mongodb').ObjectId },
-        { $set: { ...s, updatedAt: new Date() } },
-        { upsert: true }
-    );
+    const db = getDb();
+    // Callers routinely send partial updates (e.g. just { autoPrintOrders })
+    // expecting other fields to survive — merge onto the existing row rather
+    // than replacing it outright.
+    const existing = db.prepare('SELECT data FROM settings WHERE id = ?').get('global') as { data: string } | undefined;
+    const doc = { ...(existing ? JSON.parse(existing.data) : {}), ...s, updatedAt: nowIso() };
+    db.prepare('INSERT INTO settings (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data')
+        .run('global', JSON.stringify(doc));
 }
 
 // ── Chefs ──────────────────────────────────────────────────────────────────────
@@ -452,39 +489,51 @@ export interface ChefCategory {
 }
 
 export async function getChefs(): Promise<Chef[]> {
-    const db = await getDb();
-    const docs = await db.collection('chefs').find({}).toArray();
+    const db = getDb();
+    const rows = db.prepare('SELECT data FROM chefs').all() as { data: string }[];
+    const docs = rows.map(r => JSON.parse(r.data) as Record<string, unknown>);
     docs.sort((a, b) => {
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        const ta = a.createdAt ? new Date(a.createdAt as string).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt as string).getTime() : 0;
         return ta - tb;
     });
-    return docs.map(d => ({ id: d.id, name: d.name, is_active: d.is_active, color: d.color })) as Chef[];
+    return docs.map(d => ({
+        id: d.id as string,
+        name: d.name as string,
+        is_active: d.is_active as boolean,
+        color: d.color as string,
+    }));
 }
 
 export async function saveChefs(chefs: Chef[]) {
-    const db = await getDb();
-    const col = db.collection('chefs');
+    const db = getDb();
+    const get = db.prepare('SELECT data FROM chefs WHERE id = ?');
+    const upsert = db.prepare('INSERT INTO chefs (id, created_at, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data');
     for (const chef of chefs) {
-        await col.updateOne(
-            { id: chef.id },
-            { $set: { ...chef, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
-            { upsert: true }
-        );
+        const existing = get.get(chef.id) as { data: string } | undefined;
+        const now = nowIso();
+        const createdAt = existing ? ((JSON.parse(existing.data).createdAt as string) ?? now) : now;
+        const merged = existing
+            ? { ...JSON.parse(existing.data), ...chef, updatedAt: now }
+            : { ...chef, createdAt, updatedAt: now };
+        upsert.run(chef.id, createdAt, JSON.stringify(merged));
     }
 }
 
 export async function getChefCategories(): Promise<ChefCategory[]> {
-    const db = await getDb();
-    const docs = await db.collection('chef_categories').find({}).toArray();
-    return docs.map(d => ({ chef_id: d.chef_id, category_id: d.category_id })) as ChefCategory[];
+    const db = getDb();
+    const rows = db.prepare('SELECT chef_id, category_id FROM chef_categories').all() as ChefCategory[];
+    return rows.map(r => ({ chef_id: r.chef_id, category_id: r.category_id }));
 }
 
 export async function saveChefCategories(cc: ChefCategory[]) {
-    const db = await getDb();
-    const col = db.collection('chef_categories');
-    await col.deleteMany({});
-    if (cc.length > 0) await col.insertMany(cc);
+    const db = getDb();
+    const tx = db.transaction((rows: ChefCategory[]) => {
+        db.prepare('DELETE FROM chef_categories').run();
+        const insert = db.prepare('INSERT INTO chef_categories (chef_id, category_id) VALUES (?, ?)');
+        for (const r of rows) insert.run(r.chef_id, r.category_id);
+    });
+    tx(cc);
 }
 
 // ── Shared carts ───────────────────────────────────────────────────────────────
@@ -524,27 +573,30 @@ function docToCart(d: Record<string, unknown>): SharedCart {
         code: d.code as string,
         tableNumber: d.tableNumber as string,
         tokenNumber: d.tokenNumber as number,
-        createdAt: (d.createdAt as Date).toISOString(),
-        expiresAt: (d.expiresAt as Date).toISOString(),
+        createdAt: d.createdAt as string,
+        expiresAt: d.expiresAt as string,
         participants: d.participants as SharedCartParticipant[],
     };
 }
 
 export async function createSharedCart(tableNumber: string, tokenNumber: number, visitorId: string): Promise<SharedCart> {
-    const db = await getDb();
+    const db = getDb();
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000);
     const participants: SharedCartParticipant[] = [{ visitorId, joinedAt: now.toISOString(), items: [], extras: [] }];
-    const doc = { code, tableNumber, tokenNumber, participants, createdAt: now, expiresAt };
-    await db.collection('shared_carts').insertOne(doc);
-    return docToCart(doc as unknown as Record<string, unknown>);
+    const doc: SharedCart = {
+        code, tableNumber, tokenNumber, participants,
+        createdAt: now.toISOString(), expiresAt: expiresAt.toISOString(),
+    };
+    db.prepare('INSERT INTO shared_carts (code, expires_at, data) VALUES (?, ?, ?)').run(code, doc.expiresAt, JSON.stringify(doc));
+    return doc;
 }
 
 export async function getSharedCart(code: string): Promise<SharedCart | null> {
-    const db = await getDb();
-    const doc = await db.collection('shared_carts').findOne({ code, expiresAt: { $gt: new Date() } });
-    return doc ? docToCart(doc as unknown as Record<string, unknown>) : null;
+    const db = getDb();
+    const row = db.prepare('SELECT data FROM shared_carts WHERE code = ? AND expires_at > ?').get(code, new Date().toISOString()) as { data: string } | undefined;
+    return row ? docToCart(JSON.parse(row.data)) : null;
 }
 
 export async function joinSharedCart(
@@ -552,11 +604,11 @@ export async function joinSharedCart(
     visitorId: string,
     mergeParticipants?: SharedCartParticipant[]
 ): Promise<SharedCart | null> {
-    const db = await getDb();
-    const doc = await db.collection('shared_carts').findOne({ code, expiresAt: { $gt: new Date() } });
-    if (!doc) return null;
+    const db = getDb();
+    const row = db.prepare('SELECT data FROM shared_carts WHERE code = ? AND expires_at > ?').get(code, new Date().toISOString()) as { data: string } | undefined;
+    if (!row) return null;
 
-    const cart = docToCart(doc as unknown as Record<string, unknown>);
+    const cart = docToCart(JSON.parse(row.data));
     const existing = new Set(cart.participants.map(p => p.visitorId));
     const toAdd: SharedCartParticipant[] = [];
 
@@ -574,9 +626,8 @@ export async function joinSharedCart(
         }
     }
 
-    const updated = [...cart.participants, ...toAdd];
-    await db.collection('shared_carts').updateOne({ code }, { $set: { participants: updated } });
-    cart.participants = updated;
+    cart.participants = [...cart.participants, ...toAdd];
+    db.prepare('UPDATE shared_carts SET data = ? WHERE code = ?').run(JSON.stringify(cart), code);
     return cart;
 }
 
@@ -586,16 +637,16 @@ export async function updateSharedCartParticipant(
     items: SharedCartItem[],
     extras: SharedCartExtra[]
 ): Promise<SharedCart | null> {
-    const db = await getDb();
-    const doc = await db.collection('shared_carts').findOne({ code, expiresAt: { $gt: new Date() } });
-    if (!doc) return null;
+    const db = getDb();
+    const row = db.prepare('SELECT data FROM shared_carts WHERE code = ? AND expires_at > ?').get(code, new Date().toISOString()) as { data: string } | undefined;
+    if (!row) return null;
 
-    const cart = docToCart(doc as unknown as Record<string, unknown>);
+    const cart = docToCart(JSON.parse(row.data));
     const idx = cart.participants.findIndex(p => p.visitorId === visitorId);
     if (idx === -1) return null;
 
     cart.participants[idx].items = items;
     cart.participants[idx].extras = extras;
-    await db.collection('shared_carts').updateOne({ code }, { $set: { participants: cart.participants } });
+    db.prepare('UPDATE shared_carts SET data = ? WHERE code = ?').run(JSON.stringify(cart), code);
     return cart;
 }

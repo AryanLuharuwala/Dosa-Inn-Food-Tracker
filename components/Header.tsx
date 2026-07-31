@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/lib/cartContext';
 import { useMenu } from '@/lib/menuContext';
+import SidebarToggleButton from '@/components/nav/SidebarToggleButton';
 import styles from './Header.module.css';
 import Link from 'next/link';
 
@@ -76,6 +77,8 @@ export default function Header({ showCart = true, showBack = false, onBack, titl
             </div>
 
             <div className={styles.right}>
+                <SidebarToggleButton variant="inline" />
+
                 {/* Track Order Button */}
                 <Link href="/track-order" className={styles.trackOrderBtn} aria-label="Track orders">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

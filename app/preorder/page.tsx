@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/lib/cartContext';
@@ -63,6 +63,11 @@ export default function PreorderPage() {
     const [phone, setPhone] = useState('');
     const [selectedTime, setSelectedTime] = useState<string | null>(null);
     const [showLoader, setShowLoader] = useState(false);
+
+    // Every preorder ends up at /menu next — warm it ahead of the click.
+    useEffect(() => {
+        router.prefetch('/menu');
+    }, [router]);
     const [errors, setErrors] = useState<{ name?: string; phone?: string; time?: string }>({});
 
     const timeSlots = useMemo(() => generateTimeSlots(), []);

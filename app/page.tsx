@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMenu } from '@/lib/menuContext';
 import styles from './page.module.css';
@@ -14,6 +14,14 @@ export default function LandingPage() {
   const [showLoader, setShowLoader] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Both CTAs on this page lead here — warm the router cache for whichever
+  // the visitor picks so the transition feels instant instead of waiting on
+  // a fresh network round-trip, especially over flaky campus WiFi.
+  useEffect(() => {
+    router.prefetch('/table');
+    router.prefetch('/preorder');
+  }, [router]);
 
   // Parallax effect on mouse/touch move
   const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {

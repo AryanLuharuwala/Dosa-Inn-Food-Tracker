@@ -42,12 +42,12 @@ A mobile-first restaurant ordering system for campus dining. QR-based table orde
 |---|---|
 | Framework | Next.js 16 (App Router, standalone output) |
 | Language | TypeScript 5 |
-| Database | Azure Database for PostgreSQL Flexible Server |
+| Database | SQLite (local file, better-sqlite3) |
 | Cache / Pub-Sub | Azure Cache for Redis |
 | File storage | Azure Blob Storage |
 | Realtime | Server-Sent Events over Redis Pub/Sub |
 | Payments | PhonePe Checkout v2 |
-| WhatsApp | whatsapp-web.js (separate Node.js process) |
+| WhatsApp | Baileys (WebSocket-based, no browser — separate Node.js process) |
 | Process manager | pm2 (local) / Azure Web App (cloud) |
 | Styling | CSS Modules + design tokens |
 | State | React Context API |
@@ -61,12 +61,13 @@ A mobile-first restaurant ordering system for campus dining. QR-based table orde
 | Azure service | Purpose |
 |---|---|
 | Azure Web App (Node 20) | Hosts the Next.js app |
-| Azure Cosmos DB for MongoDB | Persistent data store |
 | Azure Blob Storage | Menu image uploads |
+
+The database is **SQLite** — a single file (`data/app.db`) that lives on disk next to the app, no separate database service to provision. On Azure Web App (Linux), the `/home` path is persistent local storage that survives restarts/redeploys, so `data/app.db` there is safe — just note this doesn't scale past a single instance (SQLite is single-writer).
 
 ### 1. Provision Azure resources
 
-You need a **Cosmos DB for MongoDB** account and a **Storage Account**. Create the Storage Account via Cloud Shell:
+You need a **Storage Account** for image uploads. Create it via Cloud Shell:
 
 ```bash
 RG="your-resource-group"
@@ -82,16 +83,15 @@ az storage account show-connection-string --resource-group $RG \
 
 If you have local JSON files in `/data/`:
 ```bash
-MONGO_URL="mongodb://..." npx tsx scripts/migrate-to-azure.ts
+npx tsx scripts/migrate-to-sqlite.ts
 ```
+This writes directly into `data/app.db` — deploy that file alongside the app (or run the script once on the server itself).
 
 ### 3. Set App Settings on Azure Web App
 
 In **Azure Portal → Your Web App → Configuration → Application settings**, add:
 
 ```
-MONGO_URL                          mongodb://pollys-server:key@pollys-server.mongo.cosmos.azure.com:10255/pollys-database?ssl=true&replicaSet=globaldb&retrywrites=false&maxIdleTimeMS=120000&appName=@pollys-server@
-MONGO_DB_NAME                      pollys-database
 AZURE_STORAGE_CONNECTION_STRING    DefaultEndpointsProtocol=https;AccountName=...
 AZURE_STORAGE_CONTAINER_NAME       uploads
 ADMIN_PASSWORD                     your-admin-password
@@ -102,6 +102,8 @@ PHONEPE_ENV                        production
 PHONEPE_MERCHANT_ID                your-merchant-id
 NEXT_PUBLIC_BASE_URL               https://your-app.azurewebsites.net
 ```
+
+`SQLITE_PATH` is optional — defaults to `data/app.db` relative to the app directory.
 
 Also set **Startup Command**:
 ```
@@ -123,8 +125,7 @@ node /home/site/wwwroot/server.js
 
 ### Prerequisites
 
-- Node.js 20+
-- A MongoDB-compatible database (local MongoDB, or point at Cosmos DB directly)
+- Node.js 20+ (no separate database to install — SQLite is a local file, created automatically on first run)
 
 ### 1. Clone & install
 
@@ -144,8 +145,8 @@ cp .env.example .env.local
 Edit `.env.local`:
 
 ```env
-MONGO_URL=mongodb://localhost:27017
-MONGO_DB_NAME=rocky
+# SQLite path (optional — defaults to data/app.db)
+SQLITE_PATH=
 
 # Azure Blob Storage (optional locally — skip if you don't need image upload)
 AZURE_STORAGE_CONNECTION_STRING=
@@ -184,7 +185,7 @@ pm2 start ecosystem.config.js
 
 ## Self-Hosted Install (Linux)
 
-Run the installer once on a fresh Linux server — it handles Node, pm2, Chromium (for WhatsApp), dependencies, `.env.local` setup wizard, build, and systemd auto-start:
+Run the installer once on a fresh Linux server — it handles Node, pm2, dependencies, `.env.local` setup wizard, build, and systemd auto-start:
 
 ```bash
 bash install.sh
@@ -232,20 +233,18 @@ Or just double-click `start.bat` after the initial install.
 │       ├── settings/          # Edit .env.local from admin panel
 │       └── livekit/token/     # Voice agent token (optional)
 ├── components/                # Shared UI (Header, LeafLoader, ItemSheet…)
-├── db/
-│   └── schema.sql             # PostgreSQL schema + seed data
 ├── lib/
-│   ├── db.ts                  # PostgreSQL pool + Redis client
-│   ├── localDb.ts             # All data access (backed by PostgreSQL)
+│   ├── db.ts                  # SQLite connection + Redis client
+│   ├── localDb.ts             # All data access (backed by SQLite)
 │   ├── menuContext.tsx        # Global state (menu, orders, settings)
 │   ├── cartContext.tsx        # Cart state
 │   ├── apiAuth.ts             # Auth helpers + Redis rate limiter
-│   ├── paymentTokens.ts       # Server-side single-use payment tokens (PostgreSQL)
+│   ├── paymentTokens.ts       # Server-side single-use payment tokens (SQLite)
 │   ├── serverEvents.ts        # SSE broadcast via Redis Pub/Sub
 │   ├── whatsapp.ts            # WhatsApp notification helpers
 │   └── useSound.ts            # Sound hook
 ├── scripts/
-│   └── migrate-to-azure.ts   # One-time JSON → PostgreSQL migration
+│   └── migrate-to-sqlite.ts   # One-time JSON → SQLite migration
 ├── whatsapp-service/
 │   └── server.js              # Standalone WhatsApp Node.js process
 ├── public/

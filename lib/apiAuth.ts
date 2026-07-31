@@ -19,6 +19,28 @@ export function getClientIp(req: NextRequest): string {
     );
 }
 
+/** Admin-registered personal numbers used to gate every debug/test-only
+ *  surface (test WhatsApp sends, 'test_only' auto-reply mode) — shared here
+ *  so the set of numbers can't drift between call sites. */
+export function debugTestPhones(): Set<string> {
+    return new Set(
+        (process.env.DEBUG_TEST_PHONES ?? '')
+            .split(',')
+            .map(s => s.replace(/\D/g, ''))
+            .filter(Boolean)
+    );
+}
+
+/** Shared gate for the WhatsApp inbound/auto-reply flow: 'off' never
+ *  proceeds, 'test_only' only proceeds for a registered personal number,
+ *  'live' proceeds for anyone. Used by both the real inbound webhook and
+ *  the admin "test order flow now" button, so a mode change applies consistently. */
+export function autoReplyAllowedForPhone(mode: 'off' | 'test_only' | 'live' | undefined, digits: string): boolean {
+    if (mode === 'live') return true;
+    if (mode === 'test_only') return debugTestPhones().has(digits);
+    return false; // 'off' or undefined
+}
+
 // In-memory fixed-window rate limiter (single-instance; adequate for Azure Web App)
 const windows = new Map<string, { count: number; resetAt: number }>();
 

@@ -87,6 +87,9 @@ if (-not (Test-Path $envFile)) {
     $lkSecret    = Read-Host "  LiveKit API secret (leave blank to skip)"
     $lkUrl       = Read-Host "  LiveKit WebSocket URL (leave blank to skip)"
 
+    # Shared secret between dosa-inn-web and dosa-inn-whatsapp (see ecosystem.config.js)
+    $botApiToken = -join ((1..48) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
+
     @"
 ADMIN_PASSWORD=$adminPass
 
@@ -103,6 +106,7 @@ LIVEKIT_API_SECRET=$lkSecret
 NEXT_PUBLIC_LIVEKIT_URL=$lkUrl
 
 WA_SERVICE_PORT=3478
+BOT_API_TOKEN=$botApiToken
 "@ | Set-Content $envFile -Encoding UTF8
     Write-OK ".env.local created"
 } else {

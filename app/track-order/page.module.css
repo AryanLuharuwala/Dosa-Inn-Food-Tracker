@@ -40,6 +40,63 @@
     margin: 0 auto;
 }
 
+/* Now Serving banner — Domino's-style "last number called" board */
+.nowServing {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 20px 0;
+    padding: 14px 18px;
+    background: #1a4d2e;
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(26, 77, 46, 0.25);
+    color: #fff;
+}
+
+.content .nowServing {
+    margin: 0 0 20px;
+}
+
+.nowServingPulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #4ade80;
+    flex-shrink: 0;
+    animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+    50% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+}
+
+.nowServing > div {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.nowServingLabel {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #bbf7d0;
+}
+
+.nowServingValue {
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+
+.nowServingTime {
+    font-size: 0.75rem;
+    color: #bbf7d0;
+    white-space: nowrap;
+}
+
 /* Orders Grid */
 .ordersGrid {
     display: flex;

@@ -176,3 +176,44 @@
 .revokeBtn:disabled { opacity: 0.5; cursor: default; }
 
 .revokedRow td { color: #475569; text-decoration: line-through; }
+
+.pendingGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.pendingCard {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pendingCard code {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.pendingMeta {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.acceptBtn {
+    background: #14532d;
+    color: #bbf7d0;
+    border: 1px solid #22c55e;
+    border-radius: 8px;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.acceptBtn:hover:not(:disabled) { background: #166534; }
+.acceptBtn:disabled { opacity: 0.5; cursor: default; }

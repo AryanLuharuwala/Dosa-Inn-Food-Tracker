@@ -60,50 +60,90 @@ export function buildKOTDoc(order: Order, restaurantName: string): DocLine[] {
     return doc;
 }
 
+function mapSize3(v: 'sm' | 'md' | 'lg'): 'normal' | 'large' {
+    return v === 'lg' ? 'large' : 'normal';
+}
+
+function mapSize4(v: 'sm' | 'md' | 'lg' | 'xl'): 'normal' | 'large' | 'huge' {
+    return v === 'xl' ? 'huge' : v === 'lg' ? 'large' : 'normal';
+}
+
 export function buildBillDoc(order: Order, restaurantName: string, template?: BillTemplate): DocLine[] {
     const tmpl = template ?? DEFAULT_BILL_TEMPLATE;
     const time = new Date(order.timestamp).toLocaleString('en-IN', {
         day: '2-digit', month: 'short', year: 'numeric',
         hour: '2-digit', minute: '2-digit', hour12: true,
     });
-    const payLine =
-        order.paymentMethod === 'counter' ? '** PAY AT COUNTER **' :
-        order.paymentMethod === 'online'  ? '** PAID ONLINE **'   : '';
 
-    const doc: DocLine[] = [
-        { kind: 'text', text: restaurantName, bold: true, align: 'center', size: 'large' },
-        { kind: 'divider' },
-        { kind: 'text', text: `Order: ${order.orderId}` },
-        { kind: 'text', text: `Token: ${order.tokenNumber}` },
-    ];
-    if (order.tableNumber && order.tableNumber !== '0') {
+    const doc: DocLine[] = [];
+
+    if (tmpl.header.showLogo && tmpl.header.logoUrl) {
+        doc.push({ kind: 'image', src: tmpl.header.logoUrl, size: 140 });
+    }
+    doc.push({ kind: 'text', text: restaurantName, bold: true, align: 'center', size: mapSize4(tmpl.header.restaurantNameSize) });
+    if (tmpl.header.showTagline && tmpl.header.taglineOverride) {
+        doc.push({ kind: 'text', text: tmpl.header.taglineOverride, align: 'center' });
+    }
+    if (tmpl.header.showDivider) doc.push({ kind: 'divider' });
+
+    if (tmpl.orderInfo.showOrderId) doc.push({ kind: 'text', text: `Order: ${order.orderId}` });
+    if (tmpl.orderInfo.showToken) doc.push({ kind: 'text', text: `Token: ${order.tokenNumber}` });
+    if (tmpl.orderInfo.showTable && order.tableNumber && order.tableNumber !== '0') {
         doc.push({ kind: 'text', text: `Table: ${order.tableNumber}` });
     }
-    doc.push({ kind: 'text', text: `Time:  ${time}` });
+    if (tmpl.orderInfo.showDateTime) doc.push({ kind: 'text', text: `Time:  ${time}` });
+    if (tmpl.orderInfo.showCustomerName && order.customerName) {
+        doc.push({ kind: 'text', text: `Name:  ${order.customerName}` });
+    }
+    if (tmpl.orderInfo.showCustomerPhone && order.customerPhone) {
+        doc.push({ kind: 'text', text: `Phone: ${order.customerPhone}` });
+    }
     doc.push({ kind: 'divider' });
 
+    const itemsSize = mapSize3(tmpl.items.fontSize);
     let totalUnits = 0;
     for (const it of order.items) {
         const name = it.menuItem.name.length > 18 ? it.menuItem.name.slice(0, 18) : it.menuItem.name;
-        doc.push({ kind: 'text', text: padCols(`${it.quantity} x ${name}`, `Rs.${it.totalPrice}`) });
+        const line = tmpl.items.showPrices ? padCols(`${it.quantity} x ${name}`, `Rs.${it.totalPrice}`) : `${it.quantity} x ${name}`;
+        doc.push({ kind: 'text', text: line, size: itemsSize });
         totalUnits += it.quantity;
-        for (const a of it.selectedAddOns ?? []) {
-            doc.push({ kind: 'text', text: padCols(`   + ${a.name}`, `Rs.${a.price}`) });
+        if (tmpl.items.showAddOns) {
+            for (const a of it.selectedAddOns ?? []) {
+                const addOnLine = tmpl.items.showPrices ? padCols(`   + ${a.name}`, `Rs.${a.price}`) : `   + ${a.name}`;
+                doc.push({ kind: 'text', text: addOnLine, size: itemsSize });
+            }
         }
     }
     for (const e of order.extras ?? []) {
-        doc.push({ kind: 'text', text: padCols(`${e.quantity} x ${e.extra.name}`, `Rs.${e.extra.price * e.quantity}`) });
+        const line = tmpl.items.showPrices
+            ? padCols(`${e.quantity} x ${e.extra.name}`, `Rs.${e.extra.price * e.quantity}`)
+            : `${e.quantity} x ${e.extra.name}`;
+        doc.push({ kind: 'text', text: line, size: itemsSize });
         totalUnits += e.quantity;
     }
     doc.push({ kind: 'divider' });
-    doc.push({ kind: 'text', text: padCols('TOTAL', `Rs.${order.totalAmount}`), bold: true, size: 'large' });
-    doc.push({ kind: 'text', text: `Items: ${totalUnits}` });
-    if (payLine) {
-        doc.push({ kind: 'space' });
-        doc.push({ kind: 'text', text: payLine, bold: true, align: 'center' });
+
+    doc.push({ kind: 'text', text: padCols('TOTAL', `Rs.${order.totalAmount}`), bold: true, size: mapSize4(tmpl.total.fontSize) });
+    if (tmpl.total.showItemCount) doc.push({ kind: 'text', text: `Items: ${totalUnits}` });
+
+    if (tmpl.total.showPaymentMethod) {
+        const payLine =
+            order.paymentMethod === 'counter' ? '** PAY AT COUNTER **' :
+            order.paymentMethod === 'online'  ? '** PAID ONLINE **'   : '';
+        if (payLine) {
+            doc.push({ kind: 'space' });
+            doc.push({ kind: 'text', text: payLine, bold: true, align: 'center' });
+        }
     }
+
     doc.push({ kind: 'space' });
-    doc.push({ kind: 'text', text: 'Thank you!', align: 'center' });
+    doc.push({ kind: 'text', text: tmpl.footer.customMessage || 'Thank you!', align: 'center' });
+    if (tmpl.footer.footerNote) {
+        doc.push({ kind: 'text', text: tmpl.footer.footerNote, align: 'center' });
+    }
+    if (tmpl.footer.contactLine) {
+        doc.push({ kind: 'text', text: tmpl.footer.contactLine, align: 'center' });
+    }
 
     if (tmpl.footer.showQrCode && tmpl.footer.upiId) {
         doc.push({ kind: 'space', px: 12 });
@@ -111,6 +151,18 @@ export function buildBillDoc(order: Order, restaurantName: string, template?: Bi
         if (tmpl.footer.qrLabel) {
             doc.push({ kind: 'text', text: tmpl.footer.qrLabel, align: 'center' });
         }
+    }
+
+    if (tmpl.footer.trackOrderQr) {
+        const base = process.env.NEXT_PUBLIC_BASE_URL?.trim().replace(/\/$/, '') ?? '';
+        doc.push({ kind: 'space', px: 12 });
+        doc.push({ kind: 'qr', data: `${base}/track-order?orderId=${order.orderId}`, size: 160 });
+        doc.push({ kind: 'text', text: 'Scan to track your order', align: 'center' });
+    }
+
+    if (tmpl.watermark.enabled && tmpl.watermark.text) {
+        doc.push({ kind: 'space' });
+        doc.push({ kind: 'text', text: tmpl.watermark.text, align: 'center' });
     }
 
     return doc;

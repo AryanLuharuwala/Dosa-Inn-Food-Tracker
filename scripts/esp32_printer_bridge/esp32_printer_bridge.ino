@@ -92,32 +92,45 @@ static void saveConfigField(const char* key, const String& val) {
     gPrefs.end();
 }
 
-// DigiCert Global Root G2 — pollys.food's cert chains to this root via
-// GeoTrust TLS RSA CA G1. Verified with:
-//   openssl s_client -connect pollys.food:443 -servername pollys.food -showcerts
-// Valid until 2038-01-15. If the server's chain ever changes, update this.
+// Trust anchors for pollys.food, now fronted by a cloudflared tunnel whose
+// edge cert is issued by Google Trust Services:
+//   leaf CN=pollys.food  →  intermediate CN=WE1  →  root CN=GTS Root R4
+// We pin BOTH the GTS Root R4 root AND the WE1 intermediate as anchors. The
+// leaf rotates every ~90 days but always under WE1 (valid to 2029-02), and R4
+// covers the standard path (valid to 2036-06) — either anchor validates the
+// leaf, so a routine renewal can't break us. Re-export from Chrome
+// (about:certificate) and replace these if GTS ever moves the chain.
+// Verified: `openssl verify -CAfile root -untrusted intermediate leaf` → OK.
 static const char* TLS_CA_CERT = R"(
 -----BEGIN CERTIFICATE-----
-MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
-MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
-d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
-MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT
-MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
-b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG
-9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI
-2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx
-1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ
-q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wz
-tCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQ
-vIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP
-BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV
-5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY
-1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4
-NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NG
-Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
-8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe
-pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
-MrY=
+MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD
+VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG
+A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw
+WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2Vz
+IExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQAIgNi
+AATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyi
+QHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvR
+HYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW
+BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D
+9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA8GE8
+p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICnzCCAiWgAwIBAgIQf/MZd5csIkp2FV0TttaF4zAKBggqhkjOPQQDAzBHMQsw
+CQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEU
+MBIGA1UEAxMLR1RTIFJvb3QgUjQwHhcNMjMxMjEzMDkwMDAwWhcNMjkwMjIwMTQw
+MDAwWjA7MQswCQYDVQQGEwJVUzEeMBwGA1UEChMVR29vZ2xlIFRydXN0IFNlcnZp
+Y2VzMQwwCgYDVQQDEwNXRTEwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAARvzTr+
+Z1dHTCEDhUDCR127WEcPQMFcF4XGGTfn1XzthkubgdnXGhOlCgP4mMTG6J7/EFmP
+LCaY9eYmJbsPAvpWo4H+MIH7MA4GA1UdDwEB/wQEAwIBhjAdBgNVHSUEFjAUBggr
+BgEFBQcDAQYIKwYBBQUHAwIwEgYDVR0TAQH/BAgwBgEB/wIBADAdBgNVHQ4EFgQU
+kHeSNWfE/6jMqeZ72YB5e8yT+TgwHwYDVR0jBBgwFoAUgEzW63T/STaj1dj8tT7F
+avCUHYwwNAYIKwYBBQUHAQEEKDAmMCQGCCsGAQUFBzAChhhodHRwOi8vaS5wa2ku
+Z29vZy9yNC5jcnQwKwYDVR0fBCQwIjAgoB6gHIYaaHR0cDovL2MucGtpLmdvb2cv
+ci9yNC5jcmwwEwYDVR0gBAwwCjAIBgZngQwBAgEwCgYIKoZIzj0EAwMDaAAwZQIx
+AOcCq1HW90OVznX+0RGU1cxAQXomvtgM8zItPZCuFQ8jSBJSjz5keROv9aYsAm5V
+sQIwJonMaAFi54mrfhfoFNZEfuNMSQ6/bIBiNLiyoX46FohQvKeIoJ99cx7sUkFN
+7uJW
 -----END CERTIFICATE-----
 )";
 
@@ -138,7 +151,6 @@ static const uint8_t LATTICE_END[11]   = {0xaa,0x55,0x17,0x00,0x00,0x00,0x00,0x0
 //
 // Pins:
 //   GPIO 15        — piezo buzzer (PWM tone)
-//   GPIO 7         — momentary power-toggle button (LOW = pressed)
 //   GPIO 14/9/22   — momentary action buttons (LOW = pressed)
 //
 // Buzzer modes:
@@ -151,7 +163,6 @@ static const uint8_t LATTICE_END[11]   = {0xaa,0x55,0x17,0x00,0x00,0x00,0x00,0x0
 //   BUZZ_BLE_DISC  — periodic mid beep while the printer link is down
 
 static const uint8_t BUZZER_PIN     = 15;
-static const uint8_t BTN_POWER      = 7;
 static const uint8_t BTN_TOGGLES[]  = { 14, 9, 22 };
 static const size_t  N_TOGGLES      = sizeof(BTN_TOGGLES) / sizeof(BTN_TOGGLES[0]);
 // Onboard green LED on ESP32-C6 DevKitC. Toggled on every button-press
@@ -167,10 +178,6 @@ static void toggleOnboardLed() {
 
 static BuzzMode  gBuzzMode      = BUZZ_OFF;
 static uint32_t  gBuzzStart     = 0;
-
-// Track power state. When false, WiFi and BLE are off and we enter light sleep
-// between loop iterations, woken by the power button.
-static bool      gPoweredOn     = true;
 
 // For disconnect alarms — we only start them after the device has been down
 // for a few seconds, so a quick blip doesn't trigger noise.
@@ -249,8 +256,8 @@ static bool isAlarmActive() {
 }
 
 // ── Synchronous transition beeps ─────────────────────────────────────────────
-// Short blocking patterns used at one-shot state changes (sleep, wake, wifi
-// up, ble scan, ble up). These bypass the state machine because the events
+// Short blocking patterns used at one-shot state changes (power-on, wifi up,
+// ble scan, ble up). These bypass the state machine because the events
 // happen on code paths that are themselves blocking anyway.
 
 // IO-task pause flag — declared here (before blockingChord uses it). The
@@ -261,7 +268,7 @@ static volatile bool gIoTaskPaused = false;
 static void blockingChord(const int* notes, const int* durs, size_t n) {
     // Pause the IO task so it doesn't simultaneously call tone() and corrupt
     // the LEDC channel state. Restore the previous pause state at the end so
-    // nested callers (enterSleep already paused) don't unpause prematurely.
+    // nested callers (that already paused it) don't unpause prematurely.
     const bool wasPaused = gIoTaskPaused;
     gIoTaskPaused = true;
     delay(20);   // let the IO task land on its vTaskDelay
@@ -276,20 +283,6 @@ static void blockingChord(const int* notes, const int* durs, size_t n) {
     digitalWrite(BUZZER_PIN, LOW);
 
     gIoTaskPaused = wasPaused;
-}
-
-/** Descending — "going to sleep". */
-static void beepSleepDown() {
-    static const int n[] = {880, 0, 660, 0, 440};
-    static const int d[] = { 80, 30,  80, 30,140};
-    blockingChord(n, d, 5);
-}
-
-/** Ascending — "waking up". */
-static void beepWakeUp() {
-    static const int n[] = {523, 0, 784, 0, 1047};
-    static const int d[] = { 60, 20,  60, 20, 120};
-    blockingChord(n, d, 5);
 }
 
 /** Quick two-note rise — "wifi connected". */
@@ -313,21 +306,15 @@ static void beepBleUp() {
     blockingChord(n, d, 3);
 }
 
-// Forward declarations for the power-toggle handler.
-static void enterSleep();
-static void exitSleep();
-
 static void onAnyButtonPressed() {
     // Any press silences a running alarm. Otherwise emit a short click.
     if (isAlarmActive()) setBuzz(BUZZ_OFF);
     else                 setBuzz(BUZZ_PRESS);
 }
 
-// Power-button handling crosses thread boundaries: the IO task detects the
-// press, but enterSleep() does WiFi/BLE shutdown which must run from the
-// main loop's context. So the IO task just sets gWantsSleepToggle and the
-// main loop services it. Same pattern for the three toggle-button actions.
-static volatile bool gWantsSleepToggle = false;
+// Button-action flags cross thread boundaries: the IO task detects the press
+// and sets a flag; the main loop services it so the heavy operations
+// (catPrint, ESP.restart) don't run on the IO task's small stack.
 static volatile bool gWantsReprint     = false;   // GPIO 14
 static volatile bool gWantsTestPrint   = false;   // GPIO 9
 static volatile bool gWantsStatus      = false;   // GPIO 22
@@ -337,26 +324,13 @@ static volatile bool gWantsStatus      = false;   // GPIO 22
 static uint8_t* gLastBmp    = nullptr;
 static uint16_t gLastHeight = 0;
 
-static void onPowerButtonPressed() {
-    // Instant feedback — play "going away" tone the moment the hold threshold
-    // is met. Don't wait for the main loop to service the flag.
-    beepSleepDown();
-    gWantsSleepToggle = true;
-}
-
-// Power button: HOLD-to-trigger. A brief touch shouldn't dump us into sleep,
-// so the pin must stay LOW continuously for POWER_HOLD_MS before firing.
-// Wake-from-sleep is handled by gpio_wakeup (configured separately in
-// enterSleep) and ignores this — a quick tap still wakes the device.
-static const uint32_t POWER_HOLD_MS = 400;
-
 // FreeRTOS task that runs buttonsTick() and buzzerTick() at ~60 Hz on its
 // own stack. Keeps button feedback + alarms responsive even while the main
 // loop is blocked inside HTTPClient on a long-poll.
 //
 // `gIoTaskPaused` (declared above) lets the main loop quiesce this task
-// before fiddling with shared hardware (e.g. arming the GPIO 7 wake source
-// in enterSleep, or playing a synchronous beep that calls tone()).
+// before fiddling with shared hardware (e.g. playing a synchronous beep that
+// calls tone()).
 static void ioTask(void* arg) {
     noTone(BUZZER_PIN);
     pinMode(BUZZER_PIN, OUTPUT);
@@ -384,8 +358,6 @@ static void ioTask(void* arg) {
  *  leaves the pad floating. Calling the IDF gpio_set_pull_mode directly is
  *  the only reliable way. */
 static void forceButtonPullups() {
-    gpio_set_direction((gpio_num_t)BTN_POWER, GPIO_MODE_INPUT);
-    gpio_set_pull_mode((gpio_num_t)BTN_POWER, GPIO_PULLUP_ONLY);
     for (size_t i = 0; i < N_TOGGLES; i++) {
         gpio_set_direction((gpio_num_t)BTN_TOGGLES[i], GPIO_MODE_INPUT);
         gpio_set_pull_mode((gpio_num_t)BTN_TOGGLES[i], GPIO_PULLUP_ONLY);
@@ -399,12 +371,6 @@ static void startIoTask() {
     xTaskCreate(ioTask, "io", 4096, NULL, 1, &gIoTaskHandle);
 }
 
-static void stopIoTask() {
-    if (gIoTaskHandle == NULL) return;
-    vTaskDelete(gIoTaskHandle);
-    gIoTaskHandle = NULL;
-}
-
 static void buttonsInit() {
     forceButtonPullups();
     pinMode(ONBOARD_LED, OUTPUT);
@@ -412,8 +378,8 @@ static void buttonsInit() {
     startIoTask();
 }
 
-/** Poll all buttons. Toggle buttons fire on press-edge (with 20ms debounce);
- *  power button fires only after being held LOW continuously for POWER_HOLD_MS.
+/** Poll all action buttons. Toggle buttons fire on press-edge (with 20ms
+ *  debounce).
  *
  *  On the first call after a (re)start, we ADOPT the current pin states as
  *  the baseline — so a toggle switch that's already in the LOW position
@@ -421,8 +387,6 @@ static void buttonsInit() {
 static void buttonsTick() {
     static bool     prevToggle[3]      = { false, false, false };
     static uint32_t lastToggleChange[3] = { 0, 0, 0 };
-    static uint32_t powerLowSince      = 0;
-    static bool     powerFired         = false;
     static bool     initialized        = false;
 
     const uint32_t now = millis();
@@ -458,26 +422,6 @@ static void buttonsTick() {
         } else {
             lastToggleChange[i] = now;
         }
-    }
-
-    // Power-button: TOGGLE switch (latching). On wake, the switch is still
-    // in the ON position (LOW) — we'd immediately re-trigger sleep without
-    // the powerArmed gate. Require the pin to be observed HIGH at least
-    // once after the (re)start of the IO task before any LOW press counts.
-    static bool powerArmed = false;
-    const bool powerLow = digitalRead(BTN_POWER) == LOW;
-    if (!powerLow) powerArmed = true;     // first HIGH unlocks the trigger
-
-    if (powerArmed && powerLow) {
-        if (powerLowSince == 0) powerLowSince = millis();
-        if (!powerFired && millis() - powerLowSince >= POWER_HOLD_MS) {
-            powerFired = true;
-            toggleOnboardLed();
-            onPowerButtonPressed();
-        }
-    } else {
-        powerLowSince = 0;
-        powerFired    = false;
     }
 }
 
@@ -674,6 +618,11 @@ static void onWifiEvent(WiFiEvent_t event) {
 static void connectWifi() {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_STA);
+    // Cap WiFi TX power to tame the association inrush current — the spike at
+    // WiFi.begin() is the single biggest brownout trigger. 8.5 dBm is fine for
+    // a typical room; raise it if association becomes unreliable once the
+    // device boots without resetting.
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
     WiFi.setAutoReconnect(true);
     WiFi.persistent(true);
     WiFi.onEvent(onWifiEvent);
@@ -704,10 +653,10 @@ static bool isHttps() {
     return true;  // we force https at the URL-build site below
 }
 
-// DIAGNOSTIC: when defined, the TLS client accepts ANY certificate. Lets us
-// distinguish "cert chain doesn't validate" (this will fix it) from "network
-// path is broken" (this won't fix it). Re-enable cert verification in prod.
-#define TLS_INSECURE_DEBUG
+// DIAGNOSTIC: when defined, the TLS client accepts ANY certificate. Now that
+// TLS_CA_CERT pins the real GTS Root R4 + WE1 chain, this is OFF so both GET
+// and POST validate the server. Re-enable ONLY to debug a cert/path issue.
+// #define TLS_INSECURE_DEBUG
 
 static int httpGet(const String& path, String& out, uint32_t timeoutMs = 15000) {
     String url = forceHttps(gServerBase) + path;
@@ -746,7 +695,14 @@ static int httpPostJson(const String& path, const String& body) {
     String url = forceHttps(gServerBase) + path;
     HTTPClient http;
     if (isHttps()) {
-        WiFiClientSecure tls; tls.setCACert(TLS_CA_CERT);
+        WiFiClientSecure tls;
+#ifdef TLS_INSECURE_DEBUG
+        tls.setInsecure();   // accepts ANY cert — matches httpGet so acks work
+                             // over the cloudflared tunnel (LE/Google cert,
+                             // not the pinned DigiCert root).
+#else
+        tls.setCACert(TLS_CA_CERT);
+#endif
         if (!http.begin(tls, url)) return -100;
         http.addHeader("Authorization", String("Bearer ") + gDeviceToken);
         http.addHeader("Content-Type", "application/json");
@@ -765,6 +721,71 @@ static int httpPostJson(const String& path, const String& body) {
     }
 }
 
+// ─── SELF-REGISTRATION (WPS-style pairing) ──────────────────────────────────
+// Additive to the BLE config service above, not a replacement for it — that
+// still exists for provisioning WiFi/server/token by hand. This path is for
+// the token specifically: once WiFi is up, an ESP with no working token can
+// ask the server to be paired without any Bluetooth step at all. The admin
+// approves it once from /admin/print-devices ("Accept" button); this device
+// picks the token up on its next poll here. No auth header on this request
+// — that's the whole point, we don't have a token yet.
+static int httpPostJsonGetBody(const String& path, const String& body, String& out, uint32_t timeoutMs = 15000) {
+    String url = forceHttps(gServerBase) + path;
+    HTTPClient http;
+    WiFiClientSecure tls;
+#ifdef TLS_INSECURE_DEBUG
+    tls.setInsecure();
+#else
+    tls.setCACert(TLS_CA_CERT);
+#endif
+    if (!http.begin(tls, url)) { Serial.printf("HTTP begin failed: %s\n", url.c_str()); return -100; }
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(timeoutMs);
+    int code = http.POST(body);
+    if (code > 0) out = http.getString();
+    else Serial.printf("HTTP err %d: %s (url=%s)\n", code, http.errorToString(code).c_str(), url.c_str());
+    http.end();
+    return code;
+}
+
+/** Ask the server to pair this device by its WiFi MAC. Returns true (and
+ *  saves the new token to NVS) once an admin has pressed Accept; false
+ *  means "still pending" or a transient error — the caller just retries. */
+static bool tryRegister() {
+    DynamicJsonDocument reqDoc(128);
+    reqDoc["euid"] = WiFi.macAddress();
+    String reqBody;
+    serializeJson(reqDoc, reqBody);
+
+    String respBody;
+    int code = httpPostJsonGetBody("/api/print/devices/register", reqBody, respBody);
+    if (code != 200) {
+        Serial.printf("register: HTTP %d\n", code);
+        return false;
+    }
+
+    DynamicJsonDocument doc(512);
+    if (deserializeJson(doc, respBody)) {
+        Serial.println("register: JSON parse error");
+        return false;
+    }
+
+    const char* status = doc["status"] | "";
+    if (strcmp(status, "approved") == 0) {
+        const char* token = doc["token"] | "";
+        if (!*token) { Serial.println("register: approved but no token in response"); return false; }
+        gDeviceToken = String(token);
+        saveConfigField("device_token", gDeviceToken);
+        Serial.println("register: approved — token saved, resuming normal operation");
+        return true;
+    }
+
+    Serial.println("register: still pending — waiting for admin to press Accept");
+    return false;
+}
+
+static const uint32_t REGISTER_POLL_MS = 5000;
+
 // ─── JOB LOOP ────────────────────────────────────────────────────────────────
 // Long-poll the server. The endpoint always returns 200 with this shape:
 //   { settings: { role, speed, energy }, job: null | { id, width, height, bitmap_b64 } }
@@ -782,6 +803,17 @@ static bool processJob() {
         "&wait=" + String(LONG_POLL_SEC),
         body, LONG_POLL_HTTP_MS);
     uint32_t dt = millis() - t0;
+
+    if (code == 401) {
+        // No working token (never paired, or revoked) — self-register
+        // instead of hammering the jobs endpoint. Once tryRegister() saves
+        // an approved token, the next loop iteration resumes normal polling
+        // on its own; no separate mode flag needed.
+        Serial.println("HTTP poll: 401 — no valid token, attempting self-registration");
+        tryRegister();
+        delay(REGISTER_POLL_MS);
+        return false;
+    }
     if (code != 200) { Serial.printf("HTTP poll: %d (%lums)\n", code, (unsigned long)dt); return false; }
 
     DynamicJsonDocument doc(96 * 1024);
@@ -973,63 +1005,8 @@ static void startConfigGattServer() {
 }
 
 // ─── SETUP / LOOP ────────────────────────────────────────────────────────────
-// ─── SLEEP / WAKE ────────────────────────────────────────────────────────────
-// Light sleep with esp_sleep_enable_gpio_wakeup() — works with any GPIO on
-// the ESP32-C6 (no RTC pin restriction). EXT1 was wrong here; gpio_wakeup is
-// the correct API for light-sleep + ordinary GPIOs.
-#include <esp_sleep.h>
+// gpio_set_pull_mode / gpio_set_direction (used by forceButtonPullups above).
 #include <driver/gpio.h>
-
-/** Wait until BTN_POWER has been released (HIGH) for STABLE_MS continuously.
- *  Has a hard 5-second timeout — if the pullup is misconfigured and the pin
- *  is stuck reading LOW, we bail out instead of blocking the main task
- *  forever. */
-static void waitPowerReleased() {
-    const uint32_t STABLE_MS = 120;
-    const uint32_t TIMEOUT_MS = 5000;
-    const uint32_t startMs   = millis();
-    uint32_t stableSince     = 0;
-    for (;;) {
-        if (millis() - startMs > TIMEOUT_MS) {
-            Serial.println("waitPowerReleased: timeout — proceeding anyway");
-            return;
-        }
-        if (digitalRead(BTN_POWER) == LOW) {
-            stableSince = 0;
-        } else {
-            if (stableSince == 0) stableSince = millis();
-            if (millis() - stableSince >= STABLE_MS) break;
-        }
-        delay(5);
-    }
-}
-
-/** Deep-sleep until the power button is pressed. On wake, the chip undergoes
- *  a full RESET — setup() runs from scratch, everything reinitializes. This
- *  is dramatically simpler than light sleep + post-wake gymnastics, and
- *  avoids all the state-corruption issues we hit (LEDC stuck, USB-CDC dead,
- *  prevToggle stale, etc.). The trade-off is that "sleep" really means
- *  "reboot on button press" — but functionally indistinguishable for the
- *  user. */
-static void enterSleep() {
-    stopIoTask();
-    setBuzz(BUZZ_OFF);
-    noTone(BUZZER_PIN);
-    digitalWrite(BUZZER_PIN, LOW);
-
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-
-    // Pin is guaranteed HIGH at this point — the main loop refuses to call
-    // enterSleep() until the user flips the switch off. So arming LOW-level
-    // wake here is safe; it won't fire spuriously.
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN_POWER, ESP_GPIO_WAKEUP_GPIO_LOW);
-
-    Serial.flush();
-    esp_deep_sleep_start();    // ← does not return; chip resets on wake
-}
-
-static void exitSleep() { /* unused with deep sleep — wake = reset */ }
 
 // ─── Button action handlers (run from main loop) ─────────────────────────────
 
@@ -1180,10 +1157,7 @@ static void doStatus() {
     beepStatusOk();
 }
 
-/** Power-on / wake-from-deep-sleep startup chime. Distinct from beepWakeUp
- *  (which is reserved for light-sleep wake in older builds) — this is the
- *  fanfare you hear whenever the chip boots, whether from cold power-on or
- *  from a wake-via-deep-sleep button press. */
+/** Power-on startup chime — the fanfare you hear whenever the chip boots. */
 static void beepPowerOn() {
     static const int n[] = { 392, 0, 587, 0, 784, 0, 1175 };  // G4, D5, G5, D6
     static const int d[] = {  70, 25,  70, 25,  70, 25,  140 };
@@ -1193,7 +1167,11 @@ static void beepPowerOn() {
 void setup() {
     Serial.begin(115200);
     delay(500);
-    Serial.println("\nESP32 cat-printer bridge");
+    // Print the reset reason on every boot. If the device is "turning on and
+    // off", read this: ESP_RST_BROWNOUT(=6) = supply sagged (power/cable),
+    // ESP_RST_PANIC(=4) = a crash, ESP_RST_POWERON(=1) = clean boot.
+    Serial.printf("\nESP32 cat-printer bridge  (reset reason=%d)\n",
+                  (int)esp_reset_reason());
 
     buzzerInit();
     beepPowerOn();          // audible "I'm awake" the moment the chip starts
@@ -1201,7 +1179,11 @@ void setup() {
     loadConfig();
 
     NimBLEDevice::init("ESP32-printer");
-    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    // Lowered from P9 (max) to P3 to cut the BLE TX current spike — at max
+    // power the WiFi+BLE inrush can brownout-reset a marginal charger/cable
+    // into a boot loop. P3 is plenty for a printer on the same counter; bump
+    // back up if you see BLE range problems once the device boots reliably.
+    NimBLEDevice::setPower(ESP_PWR_LVL_P3);
     NimBLEDevice::setMTU(247);
 
     startConfigGattServer();
@@ -1215,25 +1197,6 @@ void loop() {
     // Service button-action flags from the IO task. Each handler runs in
     // the main loop's context so heavy work (catPrint, WiFi teardown,
     // ESP.restart) doesn't run on the IO task's small stack.
-    // Sleep is gated on the power pin being HIGH at the moment we actually
-    // call esp_deep_sleep_start. With a TOGGLE switch in the LOW position,
-    // arming LOW-level wake while the pin is already LOW causes immediate
-    // wake → infinite restart loop. So we hold the flag here and wait until
-    // the user flips the switch OFF (pin HIGH) before entering sleep.
-    if (gWantsSleepToggle) {
-        if (digitalRead(BTN_POWER) == LOW) {
-            static uint32_t lastSleepWarn = 0;
-            if (millis() - lastSleepWarn > 2000) {
-                Serial.println("sleep pending — flip switch to OFF position before sleep can proceed");
-                lastSleepWarn = millis();
-            }
-            delay(50);
-            return;   // keep flag set; check again next iteration
-        }
-        gWantsSleepToggle = false;
-        Serial.println("power pin HIGH — entering deep sleep");
-        enterSleep();   // unreachable past here
-    }
     if (gWantsStatus) {
         gWantsStatus = false;
         doStatus();
@@ -1245,12 +1208,6 @@ void loop() {
     if (gWantsTestPrint) {
         gWantsTestPrint = false;
         doTestPrint();
-    }
-
-    // Always powered on with deep sleep — no soft-off state to maintain.
-    if (false) {
-        delay(50);
-        return;
     }
 
     // ── WiFi event service ───────────────────────────────────────────────────

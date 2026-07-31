@@ -34,10 +34,23 @@ interface OrderData {
     preorderDetails?: { pickupTime: string } | null;
 }
 
+interface NowServing {
+    orderType?: 'dine-in' | 'preorder';
+    tableNumber: string | null;
+    tokenNumber: number;
+    orderId: string;
+    readyAt: string;
+}
+
+// Board only shows calls from the last 20 minutes — a call from hours ago
+// isn't "now serving" anymore, it's just stale.
+const NOW_SERVING_STALE_MS = 20 * 60_000;
+
 export default function TrackOrderPage() {
     const router = useRouter();
     const { restaurantName } = useMenu();
     const [orders, setOrders] = useState<OrderData[]>([]);
+    const [nowServing, setNowServing] = useState<NowServing | null>(null);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [cancellingId, setCancellingId] = useState<string | null>(null);
     const [cancelConfirm, setCancelConfirm] = useState<string | null>(null);
@@ -102,8 +115,17 @@ export default function TrackOrderPage() {
         } catch { /* silent */ }
     }, [playReady, playDelivered]);
 
+    const fetchNowServing = useCallback(async () => {
+        try {
+            const res = await fetch('/api/db?resource=now_serving');
+            if (!res.ok) return;
+            const data: { order: NowServing | null } = await res.json();
+            setNowServing(data.order);
+        } catch { /* silent */ }
+    }, []);
+
     // Initial load
-    useEffect(() => { fetchOrders(); }, [fetchOrders]);
+    useEffect(() => { fetchOrders(); fetchNowServing(); }, [fetchOrders, fetchNowServing]);
 
     // SSE for live updates — only re-fetches when orders resource changes
     useEffect(() => {
@@ -115,8 +137,8 @@ export default function TrackOrderPage() {
             es.addEventListener('change', (e: MessageEvent) => {
                 try {
                     const { resource } = JSON.parse(e.data) as { resource: string };
-                    if (resource === 'orders') fetchOrders();
-                } catch { fetchOrders(); }
+                    if (resource === 'orders') { fetchOrders(); fetchNowServing(); }
+                } catch { fetchOrders(); fetchNowServing(); }
             });
             es.addEventListener('error', () => {
                 es.close();
@@ -125,7 +147,7 @@ export default function TrackOrderPage() {
         };
         connect();
         return () => { es?.close(); clearTimeout(retryTimeout); };
-    }, [fetchOrders]);
+    }, [fetchOrders, fetchNowServing]);
 
     const handleCancel = async (orderId: string) => {
         setCancellingId(orderId);
@@ -162,6 +184,23 @@ export default function TrackOrderPage() {
         return Math.min(100, (elapsed / (order.estimatedTime || 15)) * 100);
     };
 
+    const nowServingLabel = nowServing && (currentTime.getTime() - new Date(nowServing.readyAt).getTime() < NOW_SERVING_STALE_MS)
+        ? (nowServing.orderType === 'preorder'
+            ? `Parcel #${nowServing.orderId.slice(-4).toUpperCase()}`
+            : (nowServing.tableNumber && nowServing.tableNumber !== '0') ? `Table ${nowServing.tableNumber}` : `Token No. ${nowServing.tokenNumber}`)
+        : null;
+
+    const nowServingBanner = nowServingLabel && (
+        <div className={styles.nowServing}>
+            <span className={styles.nowServingPulse} />
+            <div>
+                <span className={styles.nowServingLabel}>Now Serving</span>
+                <span className={styles.nowServingValue}>{nowServingLabel}</span>
+            </div>
+            <span className={styles.nowServingTime}>{getTimeSince(nowServing!.readyAt)}</span>
+        </div>
+    );
+
     if (orders.length === 0) {
         return (
             <div className={styles.container}>
@@ -169,6 +208,7 @@ export default function TrackOrderPage() {
                     <Link href="/" className={styles.logoLink}><img src="/logo.png" alt={restaurantName} className={styles.logo} /></Link>
                     <h2 className={styles.headerTitle}>Track Orders</h2>
                 </header>
+                {nowServingBanner}
                 <div className={styles.emptyState}>
                     <div className={styles.emptyIcon}>📦</div>
                     <h2>No Orders Yet</h2>
@@ -187,6 +227,7 @@ export default function TrackOrderPage() {
             </header>
 
             <div className={styles.content}>
+                {nowServingBanner}
                 <div className={styles.ordersGrid}>
                     {orders.map(order => {
                         const status = order.status || 'preparing';

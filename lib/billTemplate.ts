@@ -31,6 +31,11 @@ export interface BillTemplate {
     upiId: string;       // UPI ID — a clean QR is generated from this at print/display time
     qrLabel: string;
     footerNote: string;
+    /** Second QR, independent of the payment QR — links to this order's
+     *  track-order page so the customer can scan their own bill. */
+    trackOrderQr: boolean;
+    /** Free-text line under the thank-you message — phone/Instagram/etc. */
+    contactLine: string;
   };
   watermark: {
     enabled: boolean;
@@ -71,6 +76,8 @@ export const DEFAULT_BILL_TEMPLATE: BillTemplate = {
     upiId: 'gpay-11260917554@okbizaxis',
     qrLabel: 'Scan to pay via UPI',
     footerNote: '',
+    trackOrderQr: false,
+    contactLine: '',
   },
   watermark: {
     enabled: false,

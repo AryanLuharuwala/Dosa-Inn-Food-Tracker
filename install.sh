@@ -130,6 +130,9 @@ if [ ! -f "$APP_DIR/.env.local" ]; then
     read -rp "  LiveKit API secret (leave blank to skip): " LK_SECRET
     read -rp "  LiveKit WebSocket URL (leave blank to skip): " LK_URL
 
+    # Shared secret between dosa-inn-web and dosa-inn-whatsapp (see ecosystem.config.js)
+    BOT_API_TOKEN="$(openssl rand -hex 24)"
+
     cat > "$APP_DIR/.env.local" << EOF
 ADMIN_PASSWORD=${ADMIN_PASS}
 
@@ -146,6 +149,7 @@ LIVEKIT_API_SECRET=${LK_SECRET}
 NEXT_PUBLIC_LIVEKIT_URL=${LK_URL}
 
 WA_SERVICE_PORT=3478
+BOT_API_TOKEN=${BOT_API_TOKEN}
 EOF
     green ".env.local created"
 else

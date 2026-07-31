@@ -32,6 +32,13 @@ interface Job {
     visible_after: string;
 }
 
+interface PendingRegistration {
+    euidHash: string;
+    firstSeenAt: string;
+    lastSeenAt: string;
+    ip: string | null;
+}
+
 function onlineStatus(last_seen_at: string | null): { label: string; online: boolean } {
     if (!last_seen_at) return { label: 'Never seen', online: false };
     const ago = Date.now() - new Date(last_seen_at).getTime();
@@ -53,6 +60,9 @@ export default function PrintDevicesPage() {
     const [openSettings, setOpenSettings] = useState<string | null>(null);
     const [savingSettings, setSavingSettings] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [pending, setPending] = useState<PendingRegistration[]>([]);
+    const [pendingLabels, setPendingLabels] = useState<Record<string, string>>({});
+    const [approving, setApproving] = useState<string | null>(null);
 
     const saveSettings = async (id: string, patch: Partial<DeviceSettings>) => {
         setSavingSettings(true);
@@ -72,14 +82,35 @@ export default function PrintDevicesPage() {
     };
 
     const load = useCallback(async () => {
-        const [dRes, jRes] = await Promise.all([
+        const [dRes, jRes, pRes] = await Promise.all([
             fetch('/api/print/devices'),
             fetch('/api/print/jobs'),
+            fetch('/api/print/devices/register'),
         ]);
         if (dRes.ok) setDevices(await dRes.json());
         if (jRes.ok) setJobs(await jRes.json());
+        if (pRes.ok) setPending(await pRes.json());
         setLoading(false);
     }, []);
+
+    const handleAccept = async (euidHash: string) => {
+        const label = pendingLabels[euidHash]?.trim() || `ESP-${euidHash.slice(0, 8)}`;
+        setApproving(euidHash);
+        setError(null);
+        try {
+            const res = await fetch(`/api/print/devices/register/${euidHash}/approve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label }),
+            });
+            if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to accept');
+            await load();
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setApproving(null);
+        }
+    };
 
     useEffect(() => {
         load();
@@ -146,6 +177,40 @@ export default function PrintDevicesPage() {
             </header>
 
             {error && <div className={styles.error}>{error}</div>}
+
+            {/* WPS-style pairing: an ESP32 with WiFi but no working token polls
+                /api/print/devices/register on its own and shows up here. No
+                Bluetooth needed for the token handoff — press Accept and the
+                device picks up its token on its next poll. */}
+            {pending.length > 0 && (
+                <section className={styles.section}>
+                    <h2>Pending ESP Requests</h2>
+                    <div className={styles.pendingGrid}>
+                        {pending.map(p => (
+                            <div key={p.euidHash} className={styles.pendingCard}>
+                                <code>{p.euidHash.slice(0, 12)}…</code>
+                                <div className={styles.pendingMeta}>
+                                    First seen {new Date(p.firstSeenAt).toLocaleTimeString('en-IN')} from {p.ip ?? 'unknown IP'}
+                                </div>
+                                <input
+                                    className={styles.input}
+                                    type="text"
+                                    placeholder={`ESP-${p.euidHash.slice(0, 8)}`}
+                                    value={pendingLabels[p.euidHash] ?? ''}
+                                    onChange={e => setPendingLabels(v => ({ ...v, [p.euidHash]: e.target.value }))}
+                                />
+                                <button
+                                    className={styles.acceptBtn}
+                                    onClick={() => handleAccept(p.euidHash)}
+                                    disabled={approving === p.euidHash}
+                                >
+                                    {approving === p.euidHash ? 'Accepting…' : '✓ Accept'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             {/* One-time token display — appears BEFORE the configurator so the
                 user can click "Send to ESP" and scroll right into a pre-filled

@@ -1,3 +1,0 @@
-{"t": 0.0002, "kind": "start", "mode": "probe"}
-{"t": 0.0002, "kind": "scan_begin", "target": "71:BA:E3:49:2D:1B"}
-{"t": 8.0464, "kind": "scan_found", "address": "71:BA:E3:49:2D:1B", "name": "SC03h-BA71"}
