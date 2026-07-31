@@ -1,0 +1,23 @@
+name: Deploy to Windows (Rocky Da Adda)
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+concurrency:
+  group: rockyda-windows-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Picked up by the self-hosted runner set up via setup-auto-deploy.ps1
+    # on the restaurant's Windows machine. WINDOWS_APP_DIR is a repo-level
+    # Actions variable (Settings -> Secrets and variables -> Actions ->
+    # Variables) pointing at that machine's live install folder.
+    runs-on: [ self-hosted, windows, rockyda ]
+    steps:
+      - name: Run deploy script
+        shell: powershell
+        run: |
+          & "${{ vars.WINDOWS_APP_DIR }}\deploy-windows.ps1"

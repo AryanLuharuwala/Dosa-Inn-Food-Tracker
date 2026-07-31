@@ -1,8 +1,9 @@
+# Retired — we no longer deploy to Azure Web App (moved to a self-hosted
+# Windows machine, see deploy-windows.yml). Kept around, manual-trigger-only,
+# in case Azure hosting is ever needed again.
 name: Deploy to Azure Web App
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 env:

@@ -1,7 +1,7 @@
+# Retired — replaced by deploy-windows.yml on the restaurant's Windows
+# machine. Kept around, manual-trigger-only, in case clawdbot comes back.
 name: Deploy to clawdbot (pollys.food)
 on:
-  push:
-    branches: [ master ]
   workflow_dispatch:
 concurrency:
   group: clawdbot-pollys

@@ -217,6 +217,17 @@ double-clickable icon that starts the server automatically, opens straight to `/
 and lives in the system tray when closed. See `electron-admin/README.md` to build the
 installer.
 
+### Auto-deploy on push (optional)
+
+Run `.\setup-auto-deploy.ps1` once, after `install.ps1`, to wire this machine up to
+`.github/workflows/deploy-windows.yml`: every push to `master` then automatically pulls,
+rebuilds, and restarts the app here, with no manual redeploy step. It registers a
+self-hosted GitHub Actions runner and starts it from this Windows user's Startup folder
+(no Windows service, no stored password — it just runs in whatever session is already
+logged in, the same one pm2 runs in). See the comments at the top of
+`setup-auto-deploy.ps1` for what you'll need (a runner registration token from the
+repo's GitHub settings).
+
 ---
 
 ## Project Structure
